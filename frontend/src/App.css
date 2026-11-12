@@ -1,0 +1,20 @@
+.lab { display: grid; grid-template-columns: 280px 1fr; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .lab { grid-template-columns: 1fr; } }
+.panel { background: #171a23; border: 1px solid #262b38; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.panel h2, .panel h3 { margin: 0 0 12px; font-size: 15px; }
+.form label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-size: 13px; color: #aab; }
+.form select, .form input[type=number] { background: #0f1117; color: #e6e8ee; border: 1px solid #30364a; padding: 6px; border-radius: 4px; }
+.form small { color: #7a8196; }
+.run { width: 100%; background: #3b6cf6; color: #fff; border: 0; padding: 10px; border-radius: 4px; font-weight: 600; cursor: pointer; }
+.run:disabled { opacity: .6; cursor: wait; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.card { background: #171a23; border: 1px solid #262b38; border-radius: 8px; padding: 12px; }
+.big { font-size: 22px; font-weight: 700; margin: 4px 0; }
+.small { font-size: 12px; }
+.pos, .buy { color: #3fb950; } .neg, .sell { color: #e5534b; }
+.warn { background: #3a2f12; border: 1px solid #6b5416; color: #f0c969; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; }
+.meta { color: #aab; font-size: 13px; margin-bottom: 12px; }
+.tablewrap { max-height: 380px; overflow: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #262b38; white-space: nowrap; }
+th { position: sticky; top: 0; background: #171a23; cursor: pointer; color: #aab; }
