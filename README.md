@@ -10,8 +10,42 @@ cd backend && uv venv .venv && uv pip install --python .venv/bin/python -e ".[de
 .venv/bin/pytest -q && .venv/bin/ruff check .
 cd ../frontend && npm install && npm run dev  # http://localhost:5173
 ```
-Postgres/Redis: `docker compose up db redis` (not needed yet in Phase 0).
+Postgres/Redis: `docker compose up db redis` (not needed yet; data is stored as Parquet in `data_store/`).
+
+## Market data (real history from MT5)
+Broker: **Deriv via MT5** (`Deriv-Demo`). With the MT5 terminal logged in and `mt5-gateway/start.ps1` running:
+```bash
+backend\.venv\Scripts\python.exe backend\download_history.py      # 5 pairs x M1..D1, 5 years; re-run to top up
+```
+or use **Market Data → Download** in the app. Each set is stored as `data_store/<SYMBOL>/<TF>.parquet` plus a
+`.meta.json` (range, quality report, data version hash, hold-out start, broker swap/spread spec).
+MT5 caps history at "Max bars in chart" (100,000 by default), which limits M1/M5; set it to Unlimited for more.
 
 ## Status
-Phase 0 (Foundation) done: interfaces, forex sessions (NY/DST), SimulatedBroker, Telegram notifier + /status, UI shell.
-Next: Phase 1 (data pipeline + backtest engine).
+- **Phase 0 (Foundation): done.** Interfaces, forex sessions (NY/DST), SimulatedBroker, Telegram notifier + /status, UI shell.
+- **Phase 1 (Data + Engine): done.** MT5 gateway + `MT5Broker` data side (account, positions, candles, prices);
+  real Deriv history for EURUSD/GBPUSD/USDJPY/AUDUSD/XAUUSD (M15 ~4 y, H1/H4/D1 5 y); validation, UTC, version hash,
+  6-month hold-out; forex cost model with broker swap rates, triple-swap day and a typical-spread floor; event-driven
+  engine + metrics; strategies EMA-1, EMA-2, EMA-3, CANDLE-1 (pattern list: engulfing, pin bar, star, tweezer,
+  three candles, inside-bar breakout; doji detector for later confluence use); Backtest Lab on real data.
+  OANDA was dropped (not available in India).
+- **Phase 2 (SMC/ICT library): done.** `app/structure/`: swings (confirmed after n bars), trend, BOS/CHoCH on close,
+  displacement, order blocks, breakers, FVGs (touch / fill / invalidation), liquidity pools (PDH/PDL, PWH/PWL, Asia
+  range, swing and equal highs/lows) and sweeps, premium/discount, H4 bias from closed bars only, New York kill zones
+  with DST. Every object records the bar it became known; tests prove nothing changes when later candles are added.
+  Engine supports limit orders (with expiry). Strategies SMC-1/2/3 and ICT-1/2/3 (magic 4001-4003 / 3001-3003).
+  **Chart Lab** page draws all of it on real candles for visual checking. ICT-4 (NY open / daily bias) not built yet.
+- **Phase 3 (Builder + Optimizer): done.** Engine loop rewritten on arrays (~15x faster, identical results).
+  `app/optimize/`: Optuna search on the training split only (first 75% before the hold-out), composite score
+  (Sharpe, profit factor, drawdown, min trades), validation split, rolling walk-forward (efficiency), Monte Carlo
+  (trade bootstrap + random extra costs), parameter sensitivity, +50% cost stress, cross-pair, Gate 1 checklist.
+  `app/library/`: strategy library in `strategy_library/*.json` with lifecycle draft -> backtested -> validated ->
+  paper -> live -> retired (validated needs Gate 1 incl. the one-time hold-out; live needs Gate 2). Rule builder
+  (`app/strategies/rules.py`): JSON blocks, all-must-pass or confluence score. Pages: Rule Builder, Optimiser,
+  Strategy Library.
+- **Phase 4 (Strategy Generator): done.** `app/generate/genetic.py`: candidates are Rule Builder specs (blocks,
+  options, confluence weights/threshold, entry, exit, structure). Genetic search (tournament selection, crossover,
+  mutation, elitism) or random search, scored on the training split only; the best distinct designs are validated
+  with the full Phase 3 pipeline plus a multiple-testing luck benchmark (expected best Sharpe of N skill-less
+  strategies). Page: Strategy Generator; survivors can be opened in the Rule Builder or saved to the library.
+- **Next:** Phase 5 (execution + risk on the Deriv MT5 demo), then Gate 0 and the backtest / paper stages.

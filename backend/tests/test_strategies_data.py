@@ -6,10 +6,21 @@ from app.backtest.metrics import compute_metrics
 from app.data import pipeline as P
 from app.domain import Bar, Instrument, Market
 from app.strategies.candle.strategies import CandlestickBaseline
-from app.strategies.ema.strategies import EMACrossover, EMATrendPullback
+from app.patterns.candles import BULLISH
+from app.strategies.ema.strategies import EMACrossover, EMARibbon, EMATrendPullback
+from app.strategies.ict.strategies import ICTAsiaRaid, ICTOte, ICTSilverBullet
+from app.strategies.smc.strategies import SMCBosRetest, SMCFvgMitigation, SMCSweepChoch
 
 EURUSD = Instrument(Market.FOREX, "EURUSD")
-STRATS = [EMATrendPullback, EMACrossover, CandlestickBaseline]
+
+
+class AllPatterns(CandlestickBaseline):
+    def __init__(self):
+        super().__init__(patterns=sorted(BULLISH))
+
+
+STRATS = [EMATrendPullback, EMACrossover, EMARibbon, CandlestickBaseline, AllPatterns]
+STRUCTURE_STRATS = [SMCSweepChoch, SMCBosRetest, SMCFvgMitigation, ICTAsiaRaid, ICTOte, ICTSilverBullet]
 
 
 def collect(strategy, df):
@@ -19,7 +30,7 @@ def collect(strategy, df):
     for i, (ts, r) in enumerate(df.iterrows()):
         ctx.i = i
         sigs = strategy.on_bar(ctx, Bar(ts.to_pydatetime(), r.open, r.high, r.low, r.close))
-        out.append([(s.side, round(s.stop_loss, 8), round(s.take_profit, 8)) for s in sigs])
+        out.append([(s.side, s.entry and round(s.entry, 8), round(s.stop_loss, 8), round(s.take_profit, 8)) for s in sigs])
     return out
 
 
@@ -81,3 +92,12 @@ def test_csv_import_converts_to_utc(tmp_path):
     p.write_text("time,open,high,low,close\n2026-01-15 09:00,1.1,1.2,1.0,1.15\n")
     df = P.load_csv(p, tz="America/New_York")
     assert str(df.index[0]) == "2026-01-15 14:00:00+00:00"
+
+
+def test_structure_strategies_never_look_ahead_and_do_trade():
+    df = P.synthetic(days=90)
+    for cls in STRUCTURE_STRATS:
+        full = collect(cls(), df)
+        for k in (len(df) // 3, len(df) // 2, 2 * len(df) // 3):
+            assert collect(cls(), df.iloc[:k]) == full[:k], f"{cls.__name__} repaints at k={k}"
+        assert sum(map(len, full)) > 0, f"{cls.__name__} never signalled"

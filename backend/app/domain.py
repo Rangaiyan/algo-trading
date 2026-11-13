@@ -54,11 +54,12 @@ class Bar:
 class Signal:
     symbol: str
     side: Side
-    entry: float | None  # None = market
+    entry: float | None  # None = market (fills at the next bar's open); a price = limit order
     stop_loss: float
     take_profit: float | None
     strategy: str
     reason: str = ""
+    expires_bars: int = 20  # limit orders only: cancelled if not filled within this many bars
 
 
 @dataclass

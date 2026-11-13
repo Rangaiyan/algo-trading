@@ -9,7 +9,14 @@ from __future__ import annotations
 STRATEGY_MAGIC: dict[str, int] = {
     "EMA-1": 1001,
     "EMA-2": 1002,
+    "EMA-3": 1003,
     "CANDLE-1": 2001,
+    "ICT-1": 3001,
+    "ICT-2": 3002,
+    "ICT-3": 3003,
+    "SMC-1": 4001,
+    "SMC-2": 4002,
+    "SMC-3": 4003,
 }
 
 DESK_RANGES: dict[str, tuple[int, int]] = {

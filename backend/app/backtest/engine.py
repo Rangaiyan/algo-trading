@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+import numpy as np
 import pandas as pd
 
 from app.backtest.costs import CostConfig, pnl_per_price_unit
@@ -100,15 +101,20 @@ class _Open:
     entry_i: int = 0
 
 
-def _rollover_nights(prev_ts: pd.Timestamp, ts: pd.Timestamp) -> list[pd.Timestamp]:
-    """Rollover instants (17:00 New York) crossed between two bars."""
-    ny_prev, ny_now = prev_ts.tz_convert("America/New_York"), ts.tz_convert("America/New_York")
-    out, d = [], ny_prev.normalize()
-    while d <= ny_now.normalize():
-        roll = d + pd.Timedelta(hours=17)
-        if ny_prev < roll <= ny_now:
-            out.append(roll)
-        d += pd.Timedelta(days=1)
+def rollover_multipliers(index: pd.DatetimeIndex, triple_weekday: int) -> np.ndarray:
+    """Per bar: swap multiplier for the rollovers (17:00 New York wall clock) crossed since the previous bar.
+
+    A rollover on date d is crossed when the previous bar is before d 17:00 NY and this bar is at/after it.
+    The rollover whose date falls on `triple_weekday` counts 3x (FX: Wednesday).
+    """
+    out = np.zeros(len(index))
+    if len(index) < 2:
+        return out
+    local = index.tz_convert("America/New_York").tz_localize(None)
+    k = (local - pd.Timedelta(hours=17)).normalize().as_unit("s").asi8 // 86400  # day id of the last rollover passed
+    for i in np.flatnonzero(np.diff(k) > 0) + 1:
+        for day in range(int(k[i - 1]) + 1, int(k[i]) + 1):
+            out[i] += 3 if (day + 3) % 7 == triple_weekday else 1  # 1970-01-01 was a Thursday (weekday 3)
     return out
 
 
@@ -122,10 +128,17 @@ def run_backtest(df: pd.DataFrame, strategy: Strategy, instrument: Instrument,
     balance = cfg.initial_balance
     pos: _Open | None = None
     pending: Signal | None = None
+    pending_age = 0
     trades: list[Trade] = []
     eq: list[float] = []
-    rows = df.reset_index()
-    ts_col = rows.columns[0]
+    o, h, lo, c = (df[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close"))
+    vol = df["volume"].to_numpy(dtype=float) if "volume" in df else np.zeros(len(df))
+    spr = df["spread"].to_numpy(dtype=float) if "spread" in df else np.zeros(len(df))
+    stamps = list(df.index)
+    pydt = df.index.to_pydatetime()
+    hs_arr = np.array([cs.spread(x, pip) / 2 for x in spr]) if len(spr) else spr
+    slip = cs.slippage(pip)
+    roll_mult = rollover_multipliers(df.index, cs.triple_swap_weekday)
 
     def pv(qty: float, px: float) -> float:
         return pnl_per_price_unit(instrument.symbol, instrument.lot_size, qty, px)
@@ -154,25 +167,38 @@ def run_backtest(df: pd.DataFrame, strategy: Strategy, instrument: Instrument,
         ))
         pos = None
 
-    prev_ts = None
-    for i, r in rows.iterrows():
-        ts = r[ts_col]
-        bar = Bar(ts.to_pydatetime(), r.open, r.high, r.low, r.close, r.volume, r.spread)
-        hs = cs.spread(bar.spread, pip) / 2
-        slip = cs.slippage(pip)
+    for i in range(len(df)):
+        ts = stamps[i]
+        bar = Bar(pydt[i], o[i], h[i], lo[i], c[i], vol[i], spr[i])
+        hs = hs_arr[i]
 
         # 1) swap for any rollover crossed while a position is open
-        if pos and prev_ts is not None:
-            for roll in _rollover_nights(prev_ts, ts):
-                mult = 3 if roll.weekday() == 2 else 1  # Wednesday = triple swap
-                rate = cs.swap_long_per_lot if pos.side == Side.BUY else cs.swap_short_per_lot
-                pos.swap -= rate * pos.qty * mult  # negative rate => cost => swap increases fees
+        if pos and roll_mult[i]:
+            rate = cs.swap_long_per_lot if pos.side == Side.BUY else cs.swap_short_per_lot
+            pos.swap -= rate * pos.qty * roll_mult[i]  # negative rate => cost => swap increases fees
 
-        # 2) fill the pending signal at this bar's open
+        # 2) fill the pending signal: market orders at this bar's open; limit orders only if price
+        #    reaches the limit (at the limit, or at the open if it gaps through), no slippage on limits
+        sig: Signal | None = None
+        entry: float | None = None
+        fill_slip = 0.0
         if pending and pos is None:
-            sig, pending = pending, None
+            sig, buy = pending, pending.side == Side.BUY
+            if sig.entry is None:
+                entry = o[i] + (hs + slip) * (1 if buy else -1)
+                fill_slip = slip
+            elif buy and lo[i] + hs <= sig.entry:
+                entry = min(sig.entry, o[i] + hs)
+            elif not buy and h[i] - hs >= sig.entry:
+                entry = max(sig.entry, o[i] - hs)
+            if entry is None:
+                pending_age += 1
+                if pending_age > sig.expires_bars:
+                    pending = None  # limit expired unfilled
+            else:
+                pending = None
+        if entry is not None and pos is None and sig is not None:
             buy = sig.side == Side.BUY
-            entry = r.open + (hs + slip) * (1 if buy else -1)
             risk_per_lot = abs(entry - sig.stop_loss) * pv(1.0, entry)
             valid_sl = (sig.stop_loss < entry) if buy else (sig.stop_loss > entry)
             if risk_per_lot > 0 and valid_sl:
@@ -182,24 +208,24 @@ def run_backtest(df: pd.DataFrame, strategy: Strategy, instrument: Instrument,
                 if lots >= cfg.min_lot:
                     pos = _Open(sig.side, round(lots, 2), entry, ts, sig.stop_loss, sig.take_profit,
                                 cs.commission_per_lot * round(lots, 2), sig.strategy,
-                                risk_money=risk_per_lot * round(lots, 2), entry_hs=hs, entry_slip=slip, entry_i=i)
+                                risk_money=risk_per_lot * round(lots, 2), entry_hs=hs, entry_slip=fill_slip, entry_i=i)
 
         # 3) manage the open position on this bar (SL first = conservative)
         if pos:
             if pos.side == Side.BUY:
-                bid_low, bid_high = r.low - hs, r.high - hs
+                bid_low, bid_high = lo[i] - hs, h[i] - hs
                 pos.mfe = max(pos.mfe, bid_high - pos.entry_px)
                 pos.mae = max(pos.mae, pos.entry_px - bid_low)
                 if bid_low <= pos.sl:
-                    close(pos, ts, min(pos.sl, r.open - hs) - slip, "sl", hs, slip, i)
+                    close(pos, ts, min(pos.sl, o[i] - hs) - slip, "sl", hs, slip, i)
                 elif pos.tp is not None and bid_high >= pos.tp:
                     close(pos, ts, pos.tp, "tp", hs, 0.0, i)
             else:
-                ask_low, ask_high = r.low + hs, r.high + hs
+                ask_low, ask_high = lo[i] + hs, h[i] + hs
                 pos.mfe = max(pos.mfe, pos.entry_px - ask_low)
                 pos.mae = max(pos.mae, ask_high - pos.entry_px)
                 if ask_high >= pos.sl:
-                    close(pos, ts, max(pos.sl, r.open + hs) + slip, "sl", hs, slip, i)
+                    close(pos, ts, max(pos.sl, o[i] + hs) + slip, "sl", hs, slip, i)
                 elif pos.tp is not None and ask_low <= pos.tp:
                     close(pos, ts, pos.tp, "tp", hs, 0.0, i)
 
@@ -207,22 +233,21 @@ def run_backtest(df: pd.DataFrame, strategy: Strategy, instrument: Instrument,
         unreal = 0.0
         if pos:
             d = 1 if pos.side == Side.BUY else -1
-            mark = r.close - hs * d
+            mark = c[i] - hs * d
             unreal = (mark - pos.entry_px) * d * pv(pos.qty, mark) - pos.commission * 2 - pos.swap
         eq.append(balance + unreal)
 
         # 5) strategy sees the CLOSED bar; its signal executes next bar
         ctx.i = i
         sigs = strategy.on_bar(ctx, bar)
-        if sigs and pos is None and pending is None:
-            pending = sigs[0]
-        prev_ts = ts
+        # a new signal is taken when flat; it also replaces a limit order that has not filled yet
+        if sigs and pos is None and (pending is None or pending.entry is not None):
+            pending, pending_age = sigs[0], 0
 
     if pos:  # close any open trade at the final close
-        last = rows.iloc[-1]
-        hs = cs.spread(last.spread, pip) / 2
-        px = last.close - hs if pos.side == Side.BUY else last.close + hs
-        close(pos, last[ts_col], px, "end", hs, 0.0, len(rows) - 1)
+        hs = hs_arr[-1]
+        px = c[-1] - hs if pos.side == Side.BUY else c[-1] + hs
+        close(pos, stamps[-1], px, "end", hs, 0.0, len(df) - 1)
         eq[-1] = balance
     strategy.on_stop(ctx)
     return BacktestResult(trades, pd.Series(eq, index=df.index, name="equity"), cfg)

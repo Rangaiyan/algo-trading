@@ -62,22 +62,24 @@ def test_simulated_broker_idempotent_orders():
 
 
 def test_backtest_endpoint_and_errors():
-    r = client.post("/backtests", json={"strategy": "EMA-2", "days": 60})
+    r = client.post("/backtests", json={"strategy": "EMA-2", "days": 60, "source": "synthetic"})
     assert r.status_code == 200 and r.json()["warning"]
     assert client.post("/backtests", json={"strategy": "nope"}).status_code == 404
-    assert client.post("/backtests", json={"strategy": "EMA-2", "source": "store"}).status_code == 404
+    assert client.post("/backtests", json={"strategy": "EMA-2", "symbol": "NOPE"}).status_code == 404
 
 
 def test_backtest_returns_curve_and_trades():
-    d = client.post("/backtests", json={"strategy": "EMA-2", "days": 60}).json()
+    d = client.post("/backtests", json={"strategy": "EMA-2", "days": 60, "source": "synthetic"}).json()
     assert 0 < len(d["equity"]) <= 1000 and {"t", "equity", "dd"} <= d["equity"][0].keys()
     assert len(d["trades"]) == d["metrics"]["trades"]
-    assert {s["id"] for s in client.get("/backtests/strategies").json()} >= {"EMA-1", "EMA-2"}
+    assert {s["id"] for s in client.get("/backtests/strategies").json()} >= {"EMA-1", "EMA-2", "EMA-3", "CANDLE-1"}
 
 
 def test_status_reports_brokers_and_mode(monkeypatch):
     import app.api.routes as routes
-    monkeypatch.setattr(routes, "mt5_connection", lambda: {"connected": True, "detail": "Demo-Server - DEMO", "account_mode": "demo"})
+    from app.core.config import Settings
+    monkeypatch.setattr(routes, "get_settings", lambda: Settings(mt5_gateway_url="http://gw.test"))  # independent of .env / cwd
+    monkeypatch.setattr(routes, "mt5_connection",lambda: {"connected": True, "detail": "Demo-Server - DEMO", "account_mode": "demo"})
     d = client.get("/status").json()
     assert d["mode"] == "demo"
     assert [b["id"] for b in d["brokers"]] == ["mt5"]  # MT5 is the only broker (OANDA is not available in India)
@@ -133,7 +135,7 @@ def test_desk_summary_splits_trades_by_magic():
     ema = desk_summary("ema", pos, deals)
     assert (ema["trades"], ema["net"], ema["floating"]) == (2, 6.0, 1.5)
     assert ema["profit_factor"] == 2.5 and ema["win_rate"] == 0.5
-    assert [s["strategy"] for s in ema["strategies"]] == ["EMA-1", "EMA-2"]
+    assert [s["strategy"] for s in ema["strategies"]] == ["EMA-1", "EMA-2", "EMA-3"]
     assert ema["curve"] == [{"t": "2026-11-03T11:00:00+00:00", "cum": 10.0}, {"t": "2026-11-04T11:00:00+00:00", "cum": 6.0}]
     assert desk_summary("candle", pos, deals)["net"] == 7.0
     manual = desk_summary("manual", pos, deals)

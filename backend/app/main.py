@@ -7,9 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.alerts.telegram import TelegramNotifier
 from app.api.account import router as account_router
+from app.api.backtests import data_router
 from app.api.backtests import router as backtests_router
 from app.api.ledger import router as ledger_router
 from app.api.routes import router, system_status
+from app.api.optimize import router as phase3_router
+from app.api.structure import router as structure_router
 from app.core.config import get_settings
 
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +47,9 @@ def create_app() -> FastAPI:
     app.include_router(backtests_router)
     app.include_router(ledger_router)
     app.include_router(account_router)
+    app.include_router(data_router)
+    app.include_router(structure_router)
+    app.include_router(phase3_router)
     return app
 
 

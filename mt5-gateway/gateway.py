@@ -123,6 +123,7 @@ def status():
         return {
             "terminal_connected": term.connected,
             "algo_trading_allowed": term.trade_allowed,
+            "max_bars": term.maxbars,  # caps how much history copy_rates_range can return
             "server": acc.server if acc else None,
             "account_mode": {0: "demo", 1: "contest", 2: "real"}.get(acc.trade_mode) if acc else None,
             "server_utc_offset_hours": _server_offset_seconds() / 3600,
@@ -170,6 +171,10 @@ def symbol_info(name: str):
             "contract_size": s.trade_contract_size, "volume_min": s.volume_min,
             "volume_max": s.volume_max, "volume_step": s.volume_step,
             "spread_points": s.spread, "currency_profit": s.currency_profit,
+            "currency_base": s.currency_base,
+            # swap_mode 1 = points (most FX); values are per lot per night
+            "swap_mode": s.swap_mode, "swap_long": s.swap_long, "swap_short": s.swap_short,
+            "swap_rollover3days": s.swap_rollover3days,
         }
 
 
@@ -194,6 +199,9 @@ def candles(
         rates = mt5.copy_rates_range(symbol, tf, start + off, end + off)
         if rates is None:
             raise HTTPException(502, f"copy_rates_range failed: {mt5.last_error()}")
+        lo, hi = start.timestamp(), end.timestamp()
+        # MT5 returns its oldest stored bar when the range lies before the available history;
+        # drop anything outside the requested window so callers never get stray bars.
         return [
             {
                 "ts": _to_utc(int(r["time"])), "open": float(r["open"]), "high": float(r["high"]),
@@ -201,6 +209,7 @@ def candles(
                 "volume": float(r["tick_volume"]), "spread": int(r["spread"]),
             }
             for r in rates
+            if lo <= int(r["time"]) - off.total_seconds() <= hi
         ]
 
 
