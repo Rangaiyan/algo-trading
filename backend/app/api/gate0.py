@@ -1,6 +1,8 @@
 """Gate 0 API: status of the MT5 Strategy Tester output file and the trade-by-trade comparison."""
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -38,6 +40,9 @@ def compare(req: CompareIn) -> dict:
             raise HTTPException(404, f"No tester output yet at {p}. Run RinzGate0 in the MT5 Strategy Tester first.")
         text = p.read_text(errors="replace")
     try:
-        return gate0.compare(text, req.server_offset_hours if req.server_offset_hours is not None else _offset())
+        res = gate0.compare(text, req.server_offset_hours if req.server_offset_hours is not None else _offset())
     except (ValueError, FileNotFoundError, KeyError) as e:
         raise HTTPException(422, str(e)) from e
+    Path("runtime").mkdir(exist_ok=True)  # the backtest-stage campaign reports the latest Gate 0 verdict
+    Path("runtime/gate0_last.json").write_text(json.dumps(res | {"at": datetime.now(UTC).isoformat(timespec="seconds")}, default=str))
+    return res

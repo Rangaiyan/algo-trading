@@ -116,3 +116,9 @@ details.panel summary { cursor: pointer; font-weight: 700; }
 .small-v { font-size: 14px !important; }
 
 .pill.upload { cursor: pointer; font-size: 11px; padding: 8px 12px; }
+
+.tbl.heat td, .tbl.heat th { text-align: center; font-size: 12px; min-width: 74px; } .tbl.heat td:first-child, .tbl.heat th:first-child { text-align: left; }
+.camp-list { padding-left: 16px; margin: 0; line-height: 1.9; font-size: 12px; } .amb { color: var(--amber); }
+
+.drills { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; } .drills li { border-bottom: 1px solid var(--line); padding-bottom: 8px; font-size: 13px; }
+.drills li.done span { color: var(--muted); text-decoration: line-through; } .drill-note { width: 100%; margin-top: 6px; background: var(--inset); color: var(--text); border: 1px solid var(--line2); border-radius: 4px; padding: 6px; font: inherit; font-size: 12px; }

@@ -88,7 +88,9 @@ def rig(tmp_path, monkeypatch):
     t = {"now": datetime(2026, 11, 10, 10, 7, tzinfo=UTC)}  # a Tuesday
     clock = lambda: t["now"]  # noqa: E731
     gw = FakeGW(clock)
-    eng = TradingEngine(MT5Broker(gateway=gw), root=str(tmp_path), now=clock)
+    from app.risk.news import NewsCalendar
+    eng = TradingEngine(MT5Broker(gateway=gw), root=str(tmp_path), now=clock,
+                        news=NewsCalendar(str(tmp_path), fetch=lambda: []))  # no network in tests
     return eng, gw, t
 
 
@@ -113,7 +115,7 @@ def test_full_trade_lifecycle_and_no_duplicates(rig):
     assert rec["state"] == "closed" and rec["pnl"] == 100.0 and rec["exit_reason"] == "tp"
     assert any("TRADE CLOSED" in a for a, _ in alerts)
     # restart: a new engine reading the same files must not resend for an already-handled candle
-    eng2 = TradingEngine(eng.broker, root=str(eng.root), now=eng.now)
+    eng2 = TradingEngine(eng.broker, root=str(eng.root), now=eng.now, news=eng.news)
     s2 = eng2.session(s["id"])
     s2["last_bar"] = rec["signal_bar"]
     eng2.orders[-1]["state"] = "open"  # pretend still open so the signal is skipped by the one-trade rule
@@ -236,3 +238,86 @@ def test_only_one_engine_loop_can_hold_the_lock(tmp_path):
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
     assert out.stdout.strip().endswith("True"), out.stderr[-400:]   # a second process is refused
     first.close()
+
+
+def test_news_filter_blocks_entries_and_warns_once(rig):
+    from app.risk.news import NewsCalendar, currencies
+    eng, gw, t = rig
+    at = (t["now"] + timedelta(minutes=35)).isoformat()
+    feed = [{"title": "Non-Farm Employment Change", "country": "USD", "date": at, "impact": "High"},
+            {"title": "Trade Balance", "country": "JPY", "date": at, "impact": "High"},
+            {"title": "Speech", "country": "USD", "date": at, "impact": "Low"}]
+    eng.news = NewsCalendar(str(eng.root), fetch=lambda: feed)
+    assert currencies("XAUUSD") == {"USD"} and currencies("EURUSD") == {"EUR", "USD"}
+    s = eng.add_session("TEST-BUY", "EURUSD", "M15")
+    eng.set_status(s["id"], "running")
+    eng.tick()                                              # baseline candle; news is 35 min away: no warning yet
+    t["now"] += timedelta(minutes=15)                       # now 20 min before NFP: warn, and block the entry
+    alerts = eng.tick()
+    assert sum("NEWS" in a for a, _ in alerts) == 1 and "Non-Farm" in next(a for a, _ in alerts if "NEWS" in a)
+    assert gw.sent == [] and "news blackout" in s["last_signal"]["decision"]
+    t["now"] += timedelta(minutes=15)
+    assert not any("NEWS" in a for a, _ in eng.tick())      # warned only once per event
+    t["now"] += timedelta(minutes=45)                       # 40 min after the release: trading again
+    eng.tick()
+    assert len(gw.sent) == 1
+
+
+def test_news_calendar_keeps_last_copy_when_fetch_fails(tmp_path):
+    from app.risk.news import NewsCalendar
+    now = datetime(2026, 11, 10, 12, tzinfo=UTC)
+    good = NewsCalendar(str(tmp_path), fetch=lambda: [{"title": "CPI", "country": "USD", "date": now.isoformat(), "impact": "High"}])
+    good.refresh(now)
+
+    def boom():
+        raise OSError("offline")
+    bad = NewsCalendar(str(tmp_path), fetch=boom)
+    bad.refresh(now + timedelta(hours=2))
+    assert bad.error and len(bad.events) == 1 and bad.blackout("EURUSD", now, 30, 30, ["High"])["title"] == "CPI"
+    assert bad.stale(now + timedelta(hours=13))
+
+
+def test_gate2_evaluation_and_drills(rig, tmp_path):
+    from app.gates import gate2
+    eng, gw, t = rig
+    s = eng.add_session("TEST-BUY", "EURUSD", "M15", mode="shakedown")
+    eng.set_status(s["id"], "running")
+    first = s["first_started_at"]
+    eng.set_status(s["id"], "paused")
+    eng.set_status(s["id"], "running")
+    assert s["first_started_at"] == first                       # restarting does not reset the paper clock
+    for k in range(6):
+        eng.orders.append({"tag": f"rz:{k}", "client_id": str(k), "session_id": s["id"], "session_name": "x", "strategy": "TEST-BUY",
+                           "symbol": "EURUSD", "side": "buy", "state": "closed", "placed_at": "2026-11-10T10:00:00+00:00",
+                           "filled_at": "2026-11-10T10:15:00+00:00", "closed_at": "2026-11-10T14:15:00+00:00",
+                           "pnl": 40.0 if k % 2 else -20.0, "risk_money": 20.0, "slippage_pips": 0.2, "spread_pips": 0.8,
+                           "requested_price": 1.1, "lots": 0.1, "mode": "shakedown"})
+    r = gate2.evaluate(eng, 10000.0, t["now"] + timedelta(weeks=9))
+    ev = r["sessions"][0]
+    assert ev["paper"]["trades"] == 6 and ev["paper"]["profit_factor"] == 2.0 and ev["paper"]["avg_hold_hours"] == 4.0
+    crit = {c["criterion"]: c["status"] for c in ev["criteria"]}
+    assert crit["Validated strategy (Gate 1)"] == "fail"         # shakedown sessions can never pass Gate 2
+    assert crit["Duration"] == "pass" and crit["Trades"] == "pending" and crit["Failure drills (plan 11.4)"] == "pending"
+    assert ev["verdict"] == "fail"
+    d = gate2.Drills(str(eng.root))
+    for k, _ in gate2.DRILLS:
+        d.mark(k, True, "done in test")
+    assert all(x["done"] for x in gate2.Drills(str(eng.root)).all())
+    with pytest.raises(KeyError):
+        d.mark("nope", True)
+
+
+def test_news_failed_first_fetch_is_stale_and_retries_hourly(tmp_path):
+    from app.risk.news import NewsCalendar
+    now = datetime(2026, 11, 10, 12, tzinfo=UTC)
+    calls = []
+
+    def boom():
+        calls.append(1)
+        raise OSError("429 Too Many Requests")
+    c = NewsCalendar(str(tmp_path), fetch=boom)
+    c.refresh(now)
+    c.refresh(now + timedelta(minutes=10))          # within the hour: no second attempt
+    assert len(calls) == 1 and c.stale(now) and c.error.startswith("OSError")
+    c.refresh(now + timedelta(minutes=61))
+    assert len(calls) == 2

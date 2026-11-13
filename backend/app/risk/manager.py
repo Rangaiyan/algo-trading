@@ -33,6 +33,10 @@ class RiskConfig:
     min_margin_level_pct: float = 300.0
     max_trades_per_day: int = 5            # per strategy session
     max_spread_pips: dict = field(default_factory=lambda: {"default": 2.0, "XAUUSD": 6.0, "USDJPY": 2.5})
+    news_filter: bool = True               # no new entries around high-impact news on the pair's currencies
+    news_minutes_before: int = 30
+    news_minutes_after: int = 30
+    news_impacts: list = field(default_factory=lambda: ["High"])
 
     def spread_cap(self, symbol: str) -> float:
         return float(self.max_spread_pips.get(symbol, self.max_spread_pips.get("default", 2.0)))
@@ -170,10 +174,12 @@ class RiskManager:
 
     # ---------- pre-trade check ----------
     def check(self, *, symbol: str, side: str, entry: float, stop: float, account: dict, positions: list[dict],
-              spec: dict, pip_size: float, trades_today: int, pending_tags: int = 0) -> Decision:
+              spec: dict, pip_size: float, trades_today: int, pending_tags: int = 0, news: dict | None = None) -> Decision:
         c, checks = self.config, []
         if self.halted:
             return Decision(False, f"trading halted ({self.state['halt']}: {self.state['halt_reason']})")
+        if news and c.news_filter:
+            return Decision(False, f"news blackout: {news['currency']} {news['title']} at {news['at'][11:16]} UTC")
         equity = float(account["equity"])
         open_n = len(positions) + pending_tags
         if open_n >= c.max_open_positions:

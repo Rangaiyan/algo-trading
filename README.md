@@ -63,5 +63,15 @@ MT5 caps history at "Max bars in chart" (100,000 by default), which limits M1/M5
   `app/gates/gate0.py` matches the tester's trades with the Rinz engine's one by one (match rate, entry/exit prices,
   P&L, profit factor). Page: Gate 0 Check. Engine now treats MT5 candles as BID prices (buys pay the full spread and
   exit on the bid), and only one process can run the trading loop (runtime/engine.lock).
-- **Next:** run Gate 0 in the Strategy Tester, the paper-trading shakedown and failure drills (plan section 11.4),
-  then the backtest stage: no strategy passes Gate 1 yet.
+- **Backtest stage tooling (plan 10.3): ready.** `app/research/campaign.py`: one job runs baselines for every strategy x
+  pair x timeframe (in-sample), shortlists the strongest distinct combinations, optimises and validates each through
+  Gate 1 (optionally plus generator runs), ranks them and saves Gate-1-passing candidates to the library for their
+  one-time hold-out. Reports in runtime/campaigns/. Page: Backtest Campaign. States the Gate 0 status.
+- **Paper-trading stage tooling (plan 11): ready.** News filter (`app/risk/news.py`): no new entries from 30 min before
+  to 30 min after high-impact events on a pair's currencies (ForexFactory weekly calendar, fetched at most hourly,
+  last copy kept, Telegram warning before each event and when the calendar goes stale). Gate 2 evaluation
+  (`app/gates/gate2.py`): per paper session, duration, trades, profit factor / win rate vs the backtest, drawdown vs
+  the Monte Carlo range, slippage vs the cost model, reconciliation, and the 7 failure drills checklist. Page: Paper
+  Trading.
+- **Next:** run Gate 0 in the Strategy Tester; keep researching until a candidate passes Gate 1 and its hold-out;
+  then paper trading (Gate 2) on the Deriv demo, with the failure drills.

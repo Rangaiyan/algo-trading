@@ -25,6 +25,7 @@ from app.data.mt5_history import BAR_MINUTES, to_frame
 from app.domain import Bar, Order, OrderType, Side
 from app.execution.magic import STRATEGY_MAGIC, strategy_of
 from app.risk.manager import RUNTIME, RiskManager, trading_day
+from app.risk.news import NewsCalendar
 
 WINDOW_BARS = 800            # candles fed to a strategy each time (warm-up for EMAs / structure)
 SNAPSHOT_EVERY = timedelta(minutes=5)
@@ -52,11 +53,12 @@ def magic_for(strategy: str, session_id: str) -> int:
 
 
 class TradingEngine:
-    def __init__(self, broker, root: str = RUNTIME, now: Callable[[], datetime] | None = None):
+    def __init__(self, broker, root: str = RUNTIME, now: Callable[[], datetime] | None = None, news: NewsCalendar | None = None):
         self.broker = broker           # MT5Broker (or a fake in tests); broker.gw = gateway client
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.risk = RiskManager(root)
+        self.news = news or NewsCalendar(root)
         self.now = now or (lambda: datetime.now(UTC))
         self.sessions: list[dict] = self._load("sessions.json", [])
         self.orders: list[dict] = self._load("orders.json", [])
@@ -104,6 +106,7 @@ class TradingEngine:
         if status == "running":
             s["last_bar"] = None  # only act on candles that close from now on (see _run_session)
             s["started_at"] = self.now().isoformat(timespec="seconds")
+            s.setdefault("first_started_at", s["started_at"])  # Gate 2 counts the paper period from here
         self._save()
         return s
 
@@ -257,8 +260,11 @@ class TradingEngine:
         trades_today = sum(o["session_id"] == s["id"] and trading_day(pd.Timestamp(o["placed_at"])) == trading_day(self.now())
                            and o["state"] != "rejected" for o in self.orders)
         pend = sum(o["state"] == "pending" for o in self.orders)
+        c = self.risk.config
+        news = self.news.blackout(s["symbol"], self.now(), c.news_minutes_before, c.news_minutes_after, c.news_impacts)             if c.news_filter else None
         dec = self.risk.check(symbol=s["symbol"], side=side, entry=ref, stop=sig.stop_loss, account=account,
-                              positions=positions, spec=spec, pip_size=inst.pip_size, trades_today=trades_today, pending_tags=pend)
+                              positions=positions, spec=spec, pip_size=inst.pip_size, trades_today=trades_today, pending_tags=pend,
+                              news=news)
         s["last_signal"]["decision"] = dec.reason
         if not dec.ok:
             alerts.append((f"⛔ SIGNAL REJECTED BY RISK\n{s['name']}: {side.upper()} {s['symbol']} — {dec.reason}", "info"))
@@ -316,6 +322,7 @@ class TradingEngine:
             last = self.state.get("last_snapshot")
             if not last or now - pd.Timestamp(last).to_pydatetime() >= SNAPSHOT_EVERY:
                 self._snapshot(now, account, positions)
+            self._news(now, alerts)
             for s in self.sessions:
                 if s["status"] != "running":
                     continue
@@ -332,6 +339,25 @@ class TradingEngine:
         finally:
             self._save()
         return alerts
+
+    def _news(self, now: datetime, alerts: list) -> None:
+        """Refresh the calendar (hourly) and warn once before each high-impact event on a traded pair."""
+        c = self.risk.config
+        if not c.news_filter:
+            return
+        self.news.refresh(now)
+        syms = sorted({s["symbol"] for s in self.sessions if s["status"] == "running"})
+        done = set(self.state.get("news_alerted") or [])
+        for e in self.news.upcoming(syms, now, c.news_minutes_before, c.news_impacts):
+            if e["key"] not in done:
+                done.add(e["key"])
+                alerts.append((f"📰 NEWS · {e['currency']} {e['title']} at {e['at'][11:16]} UTC ({e['impact']})\n"
+                               f"No new entries on {', '.join(s for s in syms if e['currency'] in s or (e['currency'] == 'USD' and s.startswith('XAU')))} "
+                               f"from {c.news_minutes_before} min before to {c.news_minutes_after} min after.", "warning"))
+        self.state["news_alerted"] = sorted(done)[-200:]
+        if self.news.stale(now) and self.state.get("news_stale_alerted") != (self.news.fetched_at or "never"):
+            self.state["news_stale_alerted"] = self.news.fetched_at or "never"   # alert once per stale period
+            alerts.append((f"⚠️ SYSTEM · news calendar is stale ({self.news.error or 'no data'}); the news filter may miss events.", "warning"))
 
     def _snapshot(self, now: datetime, account: dict, positions: list[dict]) -> None:
         p = self.root / "equity.csv"

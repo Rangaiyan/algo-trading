@@ -235,3 +235,35 @@ export type Gate0Result = {
 };
 export const gate0Info = () => fetch(`${API}/gate0/info`).then((r) => jx<Gate0Info>(r));
 export const gate0Compare = (csv?: string) => post("/gate0/compare", csv ? { csv } : {}).then((r) => jx<Gate0Result>(r));
+
+// ---------------- Backtest stage: campaign ----------------
+export type Baseline = { strategy: string; symbol: string; timeframe: string; score?: number; error?: string } & Partial<Slim>;
+export type CampaignCandidate = {
+  source: "optimiser" | "generator"; strategy: string; symbol: string; timeframe: string; describe?: string; verdict: "pass" | "fail" | "pending";
+  params: Record<string, unknown>; gate1: GateRow[]; train: Slim; validation: Slim; insample: Slim; walk_forward_efficiency: number | null;
+  cross_pair: { symbol: string; profit_factor: number | null }[]; library_id?: string; baseline?: { trades: number; profit_factor: number | null; return_pct: number; score: number };
+};
+export type Campaign = {
+  id: string; started_at: string; finished_at: string; settings: { symbols: string[]; timeframes: string[]; strategies: string[]; shortlist: number; trials: number; wf_trials: number; generator: boolean };
+  gate0: { status: string; at?: string; match_rate?: number; note?: string }; baselines: Baseline[]; shortlist: Baseline[]; candidates: CampaignCandidate[];
+  passed: number; saved_to_library: string[]; cancelled: boolean; conclusion: string;
+};
+export type CampaignReq = { symbols?: string[]; timeframes: string[]; strategies?: string[]; shortlist: number; trials: number; wf_trials: number; generator: boolean; save_passing: boolean };
+export const startCampaign = (req: CampaignReq) => post("/campaign", req).then((r) => jx<{ job_id: string }>(r));
+export const listCampaigns = () => fetch(`${API}/campaigns`).then((r) => jx<{ campaigns: (Omit<Campaign, "baselines" | "shortlist" | "candidates" | "conclusion"> & { candidates: number; baselines: number })[]; gate0: Campaign["gate0"] }>(r));
+export const getCampaign = (id: string) => fetch(`${API}/campaigns/${id}`).then((r) => jx<Campaign>(r));
+export const getAnyJob = (id: string) => fetch(`${API}/optimize/${id}`).then((r) => jx<{ id: string; kind: string; status: string; stage: string; done: number; total: number; log: string[]; error: string | null; result: unknown }>(r));
+
+// ---------------- Gate 2 (paper trading) + news ----------------
+export type Gate2Session = {
+  session: { id: string; name: string; strategy: string; symbol: string; timeframe: string; mode: string; status: string; library_id: string | null };
+  since: string; weeks: number; verdict: "pass" | "fail" | "pending";
+  paper: { trades: number; net: number; win_rate: number | null; profit_factor: number | null; avg_r: number | null; avg_hold_hours: number | null; max_dd_money: number };
+  expected: { profit_factor: number | null; win_rate: number | null; trades: number | null; trades_per_week: number | null; mc_p95_dd_pct: number | null } | null;
+  execution: { avg_slippage_pips: number | null; avg_spread_pips: number | null; rejected: number }; criteria: GateRow[];
+};
+export type Gate2 = { sessions: Gate2Session[]; drills: { key: string; drill: string; done: boolean; note?: string; at?: string }[]; criteria: Record<string, number>; as_of: string };
+export const getGate2 = () => fetch(`${API}/gate2`).then((r) => jx<Gate2>(r));
+export const markDrill = (key: string, done: boolean, note = "") => post(`/gate2/drills/${key}`, { done, note }).then((r) => jx<unknown>(r));
+export type NewsEvent = { title: string; currency: string; impact: string; at: string; forecast?: string; previous?: string };
+export const getNews = () => fetch(`${API}/news`).then((r) => jx<{ filter_on: boolean; before_min: number; after_min: number; impacts: string[]; fetched_at: string | null; error: string | null; events: NewsEvent[] }>(r));

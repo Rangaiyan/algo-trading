@@ -8,8 +8,10 @@ import Dashboard from "./Dashboard";
 import DataPage from "./DataPage";
 import ChartLab from "./lab/ChartLab";
 import Builder from "./research/Builder";
+import Campaign from "./research/Campaign";
 import Gate0 from "./research/Gate0";
 import Investment from "./trading/Investment";
+import Paper from "./trading/Paper";
 import Reports from "./trading/Reports";
 import Trading from "./trading/Trading";
 import Generator from "./research/Generator";
@@ -27,6 +29,7 @@ export default function App() {
           <Route path="/backtest-lab" element={<BacktestLab />} />
           <Route path="/trading" element={<Trading />} />
           <Route path="/investment" element={<Investment />} />
+          <Route path="/paper" element={<Paper />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/data" element={<DataPage />} />
           <Route path="/chart-lab" element={<ChartLab />} />
@@ -34,6 +37,7 @@ export default function App() {
           <Route path="/optimizer" element={<Optimizer />} />
           <Route path="/library" element={<Library />} />
           <Route path="/gate0" element={<Gate0 />} />
+          <Route path="/campaign" element={<Campaign />} />
           <Route path="/generator" element={<Generator />} />
           {["ema", "candle", "ict", "smc", "manual"].map((d) => <Route key={d} path={`/desk/${d}`} element={<DeskPage desk={d} />} />)}
           <Route path="*" element={<Navigate to="/" replace />} />

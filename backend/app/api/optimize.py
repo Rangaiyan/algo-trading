@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.backtest.runner import STRATEGIES
 from app.generate import genetic
+from app.research import campaign
 from app.library import store
 from app.optimize import pipeline
 from app.optimize.spaces import SPACES
@@ -80,6 +81,39 @@ def start(req: OptimizeRequest) -> dict:
         wf_train_months=req.wf_train_months, wf_test_months=req.wf_test_months, wf_trials=req.wf_trials,
         job=job, base=req.base))
     return {"job_id": jid}
+
+
+class CampaignRequest(BaseModel):
+    symbols: list[str] | None = None
+    timeframes: list[str] = ["H1", "H4"]
+    strategies: list[str] | None = None
+    shortlist: int = Field(6, ge=1, le=20)
+    trials: int = Field(40, ge=0, le=300)
+    wf_trials: int = Field(10, ge=0, le=60)
+    generator: bool = False
+    save_passing: bool = True
+
+
+@router.post("/campaign")
+def start_campaign(req: CampaignRequest) -> dict:
+    """Backtest stage (doc 10.3): baselines -> shortlist -> optimise + validate -> report."""
+    jid = _launch("campaign", req.model_dump(), lambda job: campaign.run_campaign(
+        req.symbols, req.timeframes, req.strategies, shortlist=req.shortlist, trials=req.trials, wf_trials=req.wf_trials,
+        generator=req.generator, save_passing=req.save_passing, job=job))
+    return {"job_id": jid}
+
+
+@router.get("/campaigns")
+def campaigns() -> dict:
+    return {"campaigns": campaign.list_campaigns(), "gate0": campaign.gate0_status()}
+
+
+@router.get("/campaigns/{cid}")
+def campaign_detail(cid: str) -> dict:
+    try:
+        return campaign.get_campaign(cid)
+    except KeyError as e:
+        raise HTTPException(404, "unknown campaign") from e
 
 
 class GenerateRequest(BaseModel):

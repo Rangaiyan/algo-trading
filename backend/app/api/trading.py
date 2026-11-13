@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.data.mt5_history import GatewayError
 from app.execution.commands import CommandHandler
 from app.execution.engine import TradingEngine
+from app.gates import gate2
 from app.library import store
 from app.portfolio.investment import summary as investment_summary
 from app.reports import reports as R
@@ -259,3 +260,35 @@ def report_html(period: str = "weekly") -> HTMLResponse:
     s = R.summarize(closed, f["account"], period)
     risk = {"halt": eng.risk.state.get("halt") or "none", **{k: v for k, v in eng.risk.usage(f["account"]["equity"]).items() if k != "limits"}}
     return HTMLResponse(R.performance_html(s, investment_summary(f["deals"] or [], f["account"], closed), risk, eng.execution_quality()))
+
+
+# ---------------- Gate 2: paper trading evaluation ----------------
+class DrillIn(BaseModel):
+    done: bool
+    note: str = ""
+
+
+@router.get("/gate2")
+def gate2_status() -> dict:
+    eng = engine()
+    acc = _fetch()
+    equity = acc["account"]["equity"] if acc.get("connected") else None
+    return gate2.evaluate(eng, equity)
+
+
+@router.post("/gate2/drills/{key}")
+def gate2_drill(key: str, req: DrillIn) -> dict:
+    try:
+        return gate2.Drills(str(engine().root)).mark(key, req.done, req.note)
+    except KeyError as e:
+        raise HTTPException(404, "unknown drill") from e
+
+
+@router.get("/news")
+def news_calendar() -> dict:
+    eng = engine()
+    c = eng.risk.config
+    eng.news.refresh(datetime.now(UTC))
+    return {"filter_on": c.news_filter, "before_min": c.news_minutes_before, "after_min": c.news_minutes_after,
+            "impacts": c.news_impacts, "fetched_at": eng.news.fetched_at, "error": eng.news.error,
+            "events": eng.news.week(c.news_impacts)}
