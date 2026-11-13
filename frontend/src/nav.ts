@@ -1,4 +1,4 @@
-import { BookMarked, Blocks, CandlestickChart, Dna, SlidersHorizontal, Crosshair, Database, FlaskConical, ScanSearch, Hand, LayoutDashboard, Layers, Zap, type LucideIcon } from "lucide-react";
+import { Activity, Scale, BookMarked, Blocks, CandlestickChart, Dna, FileText, PiggyBank, SlidersHorizontal, Crosshair, Database, FlaskConical, ScanSearch, Hand, LayoutDashboard, Layers, Zap, type LucideIcon } from "lucide-react";
 
 export type Page = { id: string; path: string; label: string; icon: LucideIcon; color: string; group: string };
 
@@ -7,6 +7,9 @@ export const DESK_COLORS = { ema: "#7fb0f0", ict: "#f0965a", smc: "#d98fc0", can
 /** Only the pages the forex workflow actually uses. */
 export const PAGES: Page[] = [
   { id: "dashboard", path: "/", label: "Dashboard", icon: LayoutDashboard, color: "currentColor", group: "Overview" },
+  { id: "trading", path: "/trading", label: "Live Trading", icon: Activity, color: "#ef4444", group: "Trading" },
+  { id: "investment", path: "/investment", label: "My Investment", icon: PiggyBank, color: "#22c55e", group: "Trading" },
+  { id: "reports", path: "/reports", label: "Reports", icon: FileText, color: "#4f8cff", group: "Trading" },
   { id: "ema", path: "/desk/ema", label: "EMA Desk", icon: Layers, color: DESK_COLORS.ema, group: "Strategy desks" },
   { id: "candle", path: "/desk/candle", label: "Candle Desk", icon: CandlestickChart, color: DESK_COLORS.candle, group: "Strategy desks" },
   { id: "ict", path: "/desk/ict", label: "ICT Desk", icon: Zap, color: DESK_COLORS.ict, group: "Strategy desks" },
@@ -18,6 +21,7 @@ export const PAGES: Page[] = [
   { id: "generator", path: "/generator", label: "Strategy Generator", icon: Dna, color: "#2dd4bf", group: "Research" },
   { id: "library", path: "/library", label: "Strategy Library", icon: BookMarked, color: "#8b5cf6", group: "Research" },
   { id: "chart-lab", path: "/chart-lab", label: "Chart Lab", icon: ScanSearch, color: "#f59e0b", group: "Research" },
+  { id: "gate0", path: "/gate0", label: "Gate 0 Check", icon: Scale, color: "#f59e0b", group: "Research" },
   { id: "data", path: "/data", label: "Market Data", icon: Database, color: "#2dd4bf", group: "Research" },
 ];
 

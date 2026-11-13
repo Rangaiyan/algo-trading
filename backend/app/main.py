@@ -11,8 +11,10 @@ from app.api.backtests import data_router
 from app.api.backtests import router as backtests_router
 from app.api.ledger import router as ledger_router
 from app.api.routes import router, system_status
+from app.api.gate0 import router as gate0_router
 from app.api.optimize import router as phase3_router
 from app.api.structure import router as structure_router
+from app.api.trading import router as trading_router
 from app.core.config import get_settings
 
 logging.basicConfig(level=logging.INFO)
@@ -24,10 +26,15 @@ async def lifespan(app: FastAPI):
     notifier = TelegramNotifier(s.telegram_bot_token, s.telegram_chat_id_list)
     app.state.notifier = notifier
     tasks = []
+    handler = None
+    if s.mt5_gateway_url and s.trading_engine_enabled:
+        from app.api.trading import command_handler, run_loop
+        tasks.append(asyncio.create_task(run_loop(notifier)))  # Phase 5 trading engine (demo-only orders)
+        handler = command_handler().handle
     if notifier.enabled:
-        tasks = [
+        tasks += [
             asyncio.create_task(notifier.worker()),
-            asyncio.create_task(notifier.poll_commands(system_status)),
+            asyncio.create_task(notifier.poll_commands(system_status, handler)),
         ]
         await notifier.send("Rinz Algo backend started", severity="info")
     yield
@@ -50,6 +57,8 @@ def create_app() -> FastAPI:
     app.include_router(data_router)
     app.include_router(structure_router)
     app.include_router(phase3_router)
+    app.include_router(trading_router)
+    app.include_router(gate0_router)
     return app
 
 

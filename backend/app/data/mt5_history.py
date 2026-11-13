@@ -53,6 +53,17 @@ class Gateway:
             raise GatewayError(f"gateway {path} -> {r.status_code}: {r.text[:200]}")
         return r.json()
 
+    def send(self, method: str, path: str, body: dict | None = None):
+        """POST/DELETE. Broker-side rejections come back as a dict with ok=False; HTTP errors raise."""
+        try:
+            r = self.client.request(method, f"{self.base}{path}", json=body)
+        except httpx.HTTPError as e:
+            raise GatewayError(f"MT5 gateway not reachable: {e}") from e
+        if r.status_code != 200:
+            detail = r.json().get("detail") if r.headers.get("content-type", "").startswith("application/json") else r.text
+            raise GatewayError(f"{detail or r.status_code}")
+        return r.json()
+
     def candles(self, symbol: str, timeframe: str, start: datetime, end: datetime) -> list[dict]:
         return self.get("/candles", symbol=symbol, timeframe=timeframe, start=start.isoformat(), end=end.isoformat())
 

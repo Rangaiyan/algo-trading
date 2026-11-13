@@ -48,4 +48,20 @@ MT5 caps history at "Max bars in chart" (100,000 by default), which limits M1/M5
   mutation, elitism) or random search, scored on the training split only; the best distinct designs are validated
   with the full Phase 3 pipeline plus a multiple-testing luck benchmark (expected best Sharpe of N skill-less
   strategies). Page: Strategy Generator; survivors can be opened in the Rule Builder or saved to the library.
-- **Next:** Phase 5 (execution + risk on the Deriv MT5 demo), then Gate 0 and the backtest / paper stages.
+- **Phase 5 (Execution + Risk + Dashboard): done.** Gateway order endpoints (market/limit, close, modify, cancel) with
+  a DEMO-ONLY guard (`MT5_ALLOW_LIVE_ORDERS=false`), mandatory broker-side stop-loss, broker volume/stop-distance rules
+  and idempotent client ids. `app/risk/manager.py`: sizing from equity and stop distance, daily/weekly loss halts,
+  drawdown halt, max positions / per pair / USD exposure, margin and spread guards, trades-per-day cap, kill switch.
+  `app/execution/engine.py`: strategy sessions on live MT5 candles every 15 s, reconciliation with MT5 (fills, SL/TP
+  closes, expired limits, unknown positions), execution-quality log, equity snapshots, daily summary; state in
+  `runtime/` (git-ignored). Telegram commands (/status /positions /pnl /investment /trades /risk /report /pause /resume
+  /killswitch with confirmation, audit log). My Investment (TWR, XIRR, drawdown, ledger) and Reports (CSV, printable
+  HTML). Pages: Live Trading, My Investment, Reports; the top-bar Kill switch is live. Set `TRADING_ENGINE_ENABLED=false`
+  to stop the engine entirely.
+- **Gate 0 tooling: ready (needs one Strategy Tester run).** `mt5-gateway/mql5/RinzGate0.mq5` (installed and compiled
+  into MT5 as Experts\Rinz\RinzGate0) and `app/strategies/reference.py` (GATE0) implement the same EMA-cross rules;
+  `app/gates/gate0.py` matches the tester's trades with the Rinz engine's one by one (match rate, entry/exit prices,
+  P&L, profit factor). Page: Gate 0 Check. Engine now treats MT5 candles as BID prices (buys pay the full spread and
+  exit on the bid), and only one process can run the trading loop (runtime/engine.lock).
+- **Next:** run Gate 0 in the Strategy Tester, the paper-trading shakedown and failure drills (plan section 11.4),
+  then the backtest stage: no strategy passes Gate 1 yet.

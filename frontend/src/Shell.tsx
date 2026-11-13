@@ -4,6 +4,7 @@ import { Moon, OctagonX, PanelLeftClose, PanelLeftOpen, Sun } from "lucide-react
 import { API } from "./api";
 import { GROUPS, PAGES } from "./nav";
 import { setTheme, useTheme } from "./theme";
+import KillDialog from "./trading/KillDialog";
 
 type Status = {
   environment: string; mode: "demo" | "live"; live_trading_enabled: boolean;
@@ -61,11 +62,12 @@ export default function Shell() {
   const { status, latency } = useStatus();
   const [now, setNow] = useState(new Date());
   const [open, setOpen] = useSidebar();
-  const [killNote, setKillNote] = useState(false);
+  const [killOpen, setKillOpen] = useState(false);
+  const [killNote, setKillNote] = useState("");
   const theme = useTheme();
 
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(id); }, []);
-  useEffect(() => { if (!killNote) return; const id = setTimeout(() => setKillNote(false), 5000); return () => clearTimeout(id); }, [killNote]);
+  useEffect(() => { if (!killNote) return; const id = setTimeout(() => setKillNote(""), 12000); return () => clearTimeout(id); }, [killNote]);
 
   const active = PAGES.find((p) => p.path === loc.pathname) ?? PAGES[0];
   const mode = status?.mode ?? "demo";
@@ -116,11 +118,12 @@ export default function Shell() {
           aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={theme === "dark" ? "Light mode" : "Dark mode"}>
           {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
         </button>
-        <button className="kill" onClick={() => setKillNote(true)} title="Close all positions and stop every strategy">
+        <button className="kill" onClick={() => setKillOpen(true)} title="Close all Rinz positions and halt every strategy">
           <OctagonX size={16} /><span>Kill switch</span>
         </button>
       </header>
-      {killNote && <div className="kill-note" role="alert">The kill switch arrives with order execution in Phase 5. Nothing is trading automatically yet.</div>}
+      {killNote && <div className="kill-note" role="alert">{killNote}</div>}
+      {killOpen && <KillDialog onClose={() => setKillOpen(false)} onDone={setKillNote} />}
 
       <main className="sh-main"><Outlet /></main>
     </div>

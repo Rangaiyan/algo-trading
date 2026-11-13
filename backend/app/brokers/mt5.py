@@ -1,7 +1,7 @@
 """MT5 broker: talks to the Windows MT5 Gateway over HTTP (doc 6.2).
 
-Data side (Phase 1) is implemented: account, positions, candles, polled prices.
-Order side (place/modify/cancel/close) is Phase 5 and still raises NotImplementedError.
+Data side (Phase 1): account, positions, candles, polled prices.
+Order side (Phase 5): place / cancel / close / modify through the gateway, which refuses non-demo accounts.
 """
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from datetime import UTC, datetime
 import pandas as pd
 
 from app.brokers.base import BrokerAdapter
-from app.data.mt5_history import Gateway, to_frame
-from app.domain import Account, Position, Side
+from app.data.mt5_history import Gateway, GatewayError, to_frame
+from app.domain import Account, Order, OrderResult, Position, Side
 
 
 class MT5Broker(BrokerAdapter):
@@ -65,7 +65,40 @@ class MT5Broker(BrokerAdapter):
     def stop_stream(self) -> None:
         self._stop.set()
 
-    def _phase5(self, *_, **__):
-        raise NotImplementedError("MT5 order execution is implemented in Phase 5 (demo first)")
+    # ---- execution (Phase 5): the gateway enforces demo-only, broker-side SL, idempotency ----
+    def place_order(self, order: Order, magic: int = 0, expire_minutes: int | None = None) -> OrderResult:
+        body = {"client_id": order.client_order_id, "symbol": order.symbol, "side": order.side.value,
+                "type": order.type.value, "volume": order.qty, "price": order.price, "stop_loss": order.stop_loss,
+                "take_profit": order.take_profit, "magic": magic, "expire_minutes": expire_minutes}
+        try:
+            r = self.gw.send("POST", "/orders", body)
+        except GatewayError as e:
+            return OrderResult(False, reason=str(e))
+        self.last_result = r
+        ticket = r.get("ticket") or r.get("order") or r.get("deal")
+        return OrderResult(bool(r.get("ok")), str(ticket) if ticket else None, r.get("price"), r.get("reason", ""))
 
-    place_order = modify_order = cancel_order = close_position = _phase5  # type: ignore[assignment]
+    def cancel_order(self, order_id: str) -> OrderResult:
+        try:
+            r = self.gw.send("DELETE", f"/orders/{order_id}")
+        except GatewayError as e:
+            return OrderResult(False, order_id, reason=str(e))
+        return OrderResult(bool(r.get("ok")), order_id, None, r.get("reason", ""))
+
+    def close_position(self, position_id: str) -> OrderResult:
+        try:
+            r = self.gw.send("POST", f"/positions/{position_id}/close", {})
+        except GatewayError as e:
+            return OrderResult(False, position_id, reason=str(e))
+        return OrderResult(bool(r.get("ok")), position_id, r.get("price"), r.get("reason", ""))
+
+    def modify_order(self, order_id: str, **changes) -> OrderResult:
+        try:
+            r = self.gw.send("POST", f"/positions/{order_id}/modify",
+                             {"stop_loss": changes["stop_loss"], "take_profit": changes.get("take_profit")})
+        except GatewayError as e:
+            return OrderResult(False, order_id, reason=str(e))
+        return OrderResult(bool(r.get("ok")), order_id, None, r.get("reason", ""))
+
+    def pending_orders(self) -> list[dict]:
+        return self.gw.get("/orders")

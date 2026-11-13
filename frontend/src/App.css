@@ -91,3 +91,28 @@ details.panel summary { cursor: pointer; font-weight: 700; }
 .gen-curve i { display: block; background: var(--cyan); border-radius: 3px 3px 0 0; min-height: 3px; }
 .gen-curve small { font-size: 9px; color: var(--muted); }
 .tbl.lead td, .tbl.lead th { text-align: left; } .lead-d { white-space: normal; font-size: 12px; min-width: 320px; }
+
+.trade-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.trade-head > div:first-child { flex: 1; min-width: 280px; } .trade-head-actions { display: flex; gap: 8px; align-items: center; }
+.halt-banner { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 14px; margin-bottom: 14px; border-radius: 10px;
+  background: var(--neg-tint); border: 1px solid var(--down-bd); color: var(--text); font-size: 13px; } .halt-banner b { color: var(--red); }
+.rmeter-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); } .rmeter-top b { font-size: 16px; color: var(--text); }
+.rmeter .meter { height: 8px; margin: 8px 0 4px; } .rmeter .meter i { transition: width .3s; }
+.sess-tbl td, .sess-tbl th { text-align: left; vertical-align: top; } .sess-act { white-space: nowrap; } .sess-act .pill { margin: 0 4px 4px 0; font-size: 10px; }
+.add-sess { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.add-sess select { background: var(--inset); color: var(--text); border: 1px solid var(--line2); border-radius: 4px; padding: 8px; font: inherit; font-size: 12px; }
+.add-sess .ack { flex-basis: 100%; font-size: 12px; color: var(--amber); align-items: flex-start; }
+.ostate { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; } .ostate.open { color: var(--cyan); } .ostate.pending { color: var(--amber); }
+.ostate.closed { color: var(--muted); } .ostate.rejected, .ostate.expired { color: var(--red); }
+.risk-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 12px; } .risk-grid label { font-size: 11px; margin-bottom: 8px; }
+.risk-events { padding-left: 16px; line-height: 1.8; margin: 0; }
+.kill-modal { max-width: 480px; } .kill-title { display: flex; align-items: center; gap: 8px; color: var(--red); margin: 0 0 10px; }
+.kill-modal ul { line-height: 1.8; padding-left: 18px; } .kill-confirm { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; font-size: 13px; }
+.kill-confirm input { background: var(--inset); color: var(--text); border: 1px solid var(--line2); border-radius: 6px; padding: 9px; font: inherit; font-size: 14px; letter-spacing: .1em; }
+.kill-actions { display: flex; justify-content: flex-end; gap: 8px; } .kill:disabled { opacity: .45; cursor: not-allowed; }
+.months { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; }
+.month { border-radius: 8px; padding: 8px; display: flex; flex-direction: column; font-size: 12px; } .month.g { background: var(--cal-g); } .month.r { background: var(--cal-r); }
+.report-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; } .report-bar .pill { font-size: 11px; padding: 7px 12px; }
+.small-v { font-size: 14px !important; }
+
+.pill.upload { cursor: pointer; font-size: 11px; padding: 8px 12px; }

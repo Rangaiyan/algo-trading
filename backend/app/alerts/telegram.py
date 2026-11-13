@@ -50,8 +50,11 @@ class TelegramNotifier:
                 log.warning("telegram send failed (attempt %s)", attempt + 1)
                 await asyncio.sleep(2**attempt)
 
-    async def poll_commands(self, status_provider) -> None:
-        """Long-poll getUpdates; answer /status and /help for allow-listed chats only."""
+    async def poll_commands(self, status_provider, handler=None) -> None:
+        """Long-poll getUpdates; answer commands for allow-listed chats only.
+
+        `handler(chat_id, text) -> str` (Phase 5 CommandHandler) handles every command; without it only
+        /status and /help are answered."""
         offset = 0
         async with httpx.AsyncClient(timeout=40) as client:
             while True:
@@ -66,6 +69,12 @@ class TelegramNotifier:
                         chat_id = str(msg.get("chat", {}).get("id", ""))
                         if chat_id not in self.chat_ids:
                             log.warning("ignored command from non-allow-listed chat")
+                            continue
+                        if handler is not None:
+                            reply = await asyncio.to_thread(handler, chat_id, msg.get("text") or "")
+                            if reply:
+                                await client.post(API.format(token=self.token, method="sendMessage"),
+                                                  json={"chat_id": chat_id, "text": reply[:4000]})
                             continue
                         text = (msg.get("text") or "").strip().split()[0:1]
                         await self._handle(client, chat_id, text[0] if text else "", status_provider)

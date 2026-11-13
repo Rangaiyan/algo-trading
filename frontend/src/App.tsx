@@ -8,6 +8,10 @@ import Dashboard from "./Dashboard";
 import DataPage from "./DataPage";
 import ChartLab from "./lab/ChartLab";
 import Builder from "./research/Builder";
+import Gate0 from "./research/Gate0";
+import Investment from "./trading/Investment";
+import Reports from "./trading/Reports";
+import Trading from "./trading/Trading";
 import Generator from "./research/Generator";
 import Library from "./research/Library";
 import Optimizer from "./research/Optimizer";
@@ -21,11 +25,15 @@ export default function App() {
         <Route element={<Shell />}>
           <Route index element={<Dashboard />} />
           <Route path="/backtest-lab" element={<BacktestLab />} />
+          <Route path="/trading" element={<Trading />} />
+          <Route path="/investment" element={<Investment />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/data" element={<DataPage />} />
           <Route path="/chart-lab" element={<ChartLab />} />
           <Route path="/builder" element={<Builder />} />
           <Route path="/optimizer" element={<Optimizer />} />
           <Route path="/library" element={<Library />} />
+          <Route path="/gate0" element={<Gate0 />} />
           <Route path="/generator" element={<Generator />} />
           {["ema", "candle", "ict", "smc", "manual"].map((d) => <Route key={d} path={`/desk/${d}`} element={<DeskPage desk={d} />} />)}
           <Route path="*" element={<Navigate to="/" replace />} />

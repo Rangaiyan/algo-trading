@@ -124,12 +124,11 @@ def test_new_candle_patterns_fire_on_textbook_shapes():
     assert C.doji(_frame([(1.1000, 1.1015, 1.0985, 1.1001)])).iat[-1]
 
 
-def test_mt5_broker_data_methods_and_phase5_guard():
+def test_mt5_broker_data_methods():
     b = MT5Broker(gateway=FakeGateway(datetime(2026, 1, 5, tzinfo=UTC), datetime(2026, 1, 6, tzinfo=UTC)))
     assert b.get_account().equity == 201.5
     p = b.get_positions()[0]
     assert p.side == Side.BUY and p.take_profit is None
     df = b.get_candles("EURUSD", "M15", datetime(2026, 1, 5, tzinfo=UTC), datetime(2026, 1, 5, 2, tzinfo=UTC))
     assert len(df) == 9 and df.spread.iat[0] == pytest.approx(0.00008)
-    with pytest.raises(NotImplementedError):
-        b.place_order(None)
+    # order execution is implemented in Phase 5 (see test_phase5.py)

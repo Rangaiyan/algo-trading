@@ -2,7 +2,8 @@
 
 Rules enforced here:
 * Signal on a CLOSED bar i executes at bar i+1 open (no look-ahead).
-* Prices in data are mid; we trade bid/ask via half-spread + slippage.
+* Price basis: "mid" data -> bid/ask = price -/+ half spread; "bid" data (MT5 candles) -> bid = price,
+  ask = price + full spread. Buys fill at the ask and exit on the bid; sells the other way round.
 * If SL and TP are both reachable inside one bar, the SL is assumed to hit (conservative).
 * One position per run (single symbol); swap charged per rollover, tripled on Wednesday.
 """
@@ -59,6 +60,7 @@ class BacktestConfig:
     min_lot: float = 0.01
     lot_step: float = 0.01
     max_lots: float = 50.0
+    fixed_lots: float | None = None   # Gate 0 / reference runs: trade a fixed size instead of risk-based sizing
     costs: CostConfig = field(default_factory=CostConfig)
 
 
@@ -136,7 +138,11 @@ def run_backtest(df: pd.DataFrame, strategy: Strategy, instrument: Instrument,
     spr = df["spread"].to_numpy(dtype=float) if "spread" in df else np.zeros(len(df))
     stamps = list(df.index)
     pydt = df.index.to_pydatetime()
-    hs_arr = np.array([cs.spread(x, pip) / 2 for x in spr]) if len(spr) else spr
+    full = np.array([cs.spread(x, pip) for x in spr]) if len(spr) else spr
+    if cs.price_basis == "bid":
+        ask_off, bid_off = full, np.zeros(len(full))
+    else:
+        ask_off = bid_off = full / 2
     slip = cs.slippage(pip)
     roll_mult = rollover_multipliers(df.index, cs.triple_swap_weekday)
 
@@ -170,7 +176,7 @@ def run_backtest(df: pd.DataFrame, strategy: Strategy, instrument: Instrument,
     for i in range(len(df)):
         ts = stamps[i]
         bar = Bar(pydt[i], o[i], h[i], lo[i], c[i], vol[i], spr[i])
-        hs = hs_arr[i]
+        ao, bo = ask_off[i], bid_off[i]
 
         # 1) swap for any rollover crossed while a position is open
         if pos and roll_mult[i]:
@@ -185,12 +191,12 @@ def run_backtest(df: pd.DataFrame, strategy: Strategy, instrument: Instrument,
         if pending and pos is None:
             sig, buy = pending, pending.side == Side.BUY
             if sig.entry is None:
-                entry = o[i] + (hs + slip) * (1 if buy else -1)
+                entry = o[i] + ao + slip if buy else o[i] - bo - slip
                 fill_slip = slip
-            elif buy and lo[i] + hs <= sig.entry:
-                entry = min(sig.entry, o[i] + hs)
-            elif not buy and h[i] - hs >= sig.entry:
-                entry = max(sig.entry, o[i] - hs)
+            elif buy and lo[i] + ao <= sig.entry:
+                entry = min(sig.entry, o[i] + ao)
+            elif not buy and h[i] - bo >= sig.entry:
+                entry = max(sig.entry, o[i] - bo)
             if entry is None:
                 pending_age += 1
                 if pending_age > sig.expires_bars:
@@ -202,38 +208,38 @@ def run_backtest(df: pd.DataFrame, strategy: Strategy, instrument: Instrument,
             risk_per_lot = abs(entry - sig.stop_loss) * pv(1.0, entry)
             valid_sl = (sig.stop_loss < entry) if buy else (sig.stop_loss > entry)
             if risk_per_lot > 0 and valid_sl:
-                lots = (balance * cfg.risk_per_trade_pct / 100) / risk_per_lot
+                lots = cfg.fixed_lots or (balance * cfg.risk_per_trade_pct / 100) / risk_per_lot
                 lots = math.floor(lots / cfg.lot_step + 1e-9) * cfg.lot_step  # epsilon: float floor
                 lots = min(lots, cfg.max_lots)
                 if lots >= cfg.min_lot:
                     pos = _Open(sig.side, round(lots, 2), entry, ts, sig.stop_loss, sig.take_profit,
                                 cs.commission_per_lot * round(lots, 2), sig.strategy,
-                                risk_money=risk_per_lot * round(lots, 2), entry_hs=hs, entry_slip=fill_slip, entry_i=i)
+                                risk_money=risk_per_lot * round(lots, 2), entry_hs=ao if buy else bo, entry_slip=fill_slip, entry_i=i)
 
         # 3) manage the open position on this bar (SL first = conservative)
         if pos:
             if pos.side == Side.BUY:
-                bid_low, bid_high = lo[i] - hs, h[i] - hs
+                bid_low, bid_high = lo[i] - bo, h[i] - bo
                 pos.mfe = max(pos.mfe, bid_high - pos.entry_px)
                 pos.mae = max(pos.mae, pos.entry_px - bid_low)
                 if bid_low <= pos.sl:
-                    close(pos, ts, min(pos.sl, o[i] - hs) - slip, "sl", hs, slip, i)
+                    close(pos, ts, min(pos.sl, o[i] - bo) - slip, "sl", bo, slip, i)
                 elif pos.tp is not None and bid_high >= pos.tp:
-                    close(pos, ts, pos.tp, "tp", hs, 0.0, i)
+                    close(pos, ts, pos.tp, "tp", bo, 0.0, i)
             else:
-                ask_low, ask_high = lo[i] + hs, h[i] + hs
+                ask_low, ask_high = lo[i] + ao, h[i] + ao
                 pos.mfe = max(pos.mfe, pos.entry_px - ask_low)
                 pos.mae = max(pos.mae, ask_high - pos.entry_px)
                 if ask_high >= pos.sl:
-                    close(pos, ts, max(pos.sl, o[i] + hs) + slip, "sl", hs, slip, i)
+                    close(pos, ts, max(pos.sl, o[i] + ao) + slip, "sl", ao, slip, i)
                 elif pos.tp is not None and ask_low <= pos.tp:
-                    close(pos, ts, pos.tp, "tp", hs, 0.0, i)
+                    close(pos, ts, pos.tp, "tp", ao, 0.0, i)
 
         # 4) mark to market on close
         unreal = 0.0
         if pos:
             d = 1 if pos.side == Side.BUY else -1
-            mark = c[i] - hs * d
+            mark = c[i] - bo if d > 0 else c[i] + ao
             unreal = (mark - pos.entry_px) * d * pv(pos.qty, mark) - pos.commission * 2 - pos.swap
         eq.append(balance + unreal)
 
@@ -245,9 +251,9 @@ def run_backtest(df: pd.DataFrame, strategy: Strategy, instrument: Instrument,
             pending, pending_age = sigs[0], 0
 
     if pos:  # close any open trade at the final close
-        hs = hs_arr[-1]
-        px = c[-1] - hs if pos.side == Side.BUY else c[-1] + hs
-        close(pos, stamps[-1], px, "end", hs, 0.0, len(df) - 1)
+        off = bid_off[-1] if pos.side == Side.BUY else ask_off[-1]
+        px = c[-1] - off if pos.side == Side.BUY else c[-1] + off
+        close(pos, stamps[-1], px, "end", off, 0.0, len(df) - 1)
         eq[-1] = balance
     strategy.on_stop(ctx)
     return BacktestResult(trades, pd.Series(eq, index=df.index, name="equity"), cfg)

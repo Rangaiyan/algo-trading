@@ -11,6 +11,7 @@ Order endpoints are intentionally not implemented yet (Phase 5).
 from __future__ import annotations
 
 import secrets
+import hashlib
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -18,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 
 import MetaTrader5 as mt5
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +30,9 @@ class Settings(BaseSettings):
     gateway_token: str = ""
     # Leave empty to auto-detect from live ticks. Set e.g. 2 or 3 to force it.
     server_utc_offset_hours: float | None = None
+    # SAFETY: orders are refused unless the logged-in account is a DEMO account. Only set this to true
+    # after Gate 2 (paper trading) has passed and you have decided to trade real money.
+    allow_live_orders: bool = False
 
 
 settings = Settings()
@@ -155,7 +160,8 @@ def positions():
                 "side": "buy" if p.type == mt5.POSITION_TYPE_BUY else "sell",
                 "qty": p.volume, "entry_price": p.price_open,
                 "stop_loss": p.sl or None, "take_profit": p.tp or None,
-                "unrealized_pnl": p.profit, "opened_at": _to_utc(p.time), "magic": p.magic,
+                "unrealized_pnl": p.profit, "opened_at": _to_utc(p.time), "magic": p.magic, "tag": p.comment,
+                "swap": p.swap, "price_current": p.price_current,
             }
             for p in (mt5.positions_get() or [])
         ]
@@ -265,6 +271,202 @@ def deals(
         return out
 
 
+# ---------------- orders (Phase 5) ----------------
+# Every order: demo-only guard, mandatory broker-side stop-loss, volume rounded to the broker's step,
+# minimum stop distance respected, idempotent by client id (stored in the MT5 comment), retcode checked.
+
+RETCODE_OK = {mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_PLACED, mt5.TRADE_RETCODE_DONE_PARTIAL}
+
+
+class OrderIn(BaseModel):
+    client_id: str = Field(..., min_length=4, max_length=60)   # unique per intended order (idempotency)
+    symbol: str
+    side: str = Field(..., pattern="^(buy|sell)$")
+    type: str = Field("market", pattern="^(market|limit|stop)$")
+    volume: float = Field(..., gt=0)
+    price: float | None = None                                   # required for limit / stop
+    stop_loss: float                                             # mandatory
+    take_profit: float | None = None
+    magic: int = 0
+    deviation_points: int = 20
+    expire_minutes: int | None = None                            # pending orders: cancel after this long
+
+
+def _tag(client_id: str) -> str:
+    """MT5 comments are short (31 chars): store a stable hash of the client id."""
+    return "rz:" + hashlib.sha1(client_id.encode()).hexdigest()[:16]
+
+
+def _demo_guard() -> None:
+    acc = mt5.account_info()
+    if acc is None:
+        raise HTTPException(503, f"no account logged in: {mt5.last_error()}")
+    if acc.trade_mode != mt5.ACCOUNT_TRADE_MODE_DEMO and not settings.allow_live_orders:
+        raise HTTPException(403, "Refused: the MT5 account is not a demo account and live orders are disabled "
+                                 "(MT5_ALLOW_LIVE_ORDERS=false). Paper trading must pass Gate 2 first.")
+    term = mt5.terminal_info()
+    if term is None or not term.trade_allowed:
+        raise HTTPException(409, "Algo Trading is switched off in the MT5 terminal (toolbar button). Turn it on.")
+
+
+def _filling(info, pending: bool) -> int:
+    if pending:
+        return mt5.ORDER_FILLING_RETURN
+    fm = int(getattr(info, "filling_mode", 0) or 0)
+    if fm & 1:
+        return mt5.ORDER_FILLING_FOK
+    if fm & 2:
+        return mt5.ORDER_FILLING_IOC
+    return mt5.ORDER_FILLING_RETURN
+
+
+def _volume(info, v: float) -> float:
+    step = info.volume_step or 0.01
+    v = int(v / step + 1e-9) * step
+    v = min(v, info.volume_max)
+    if v < info.volume_min:
+        raise HTTPException(422, f"volume {v} below the broker minimum {info.volume_min}")
+    return round(v, 8)
+
+
+def _existing(tag: str) -> dict | None:
+    """An order/position/deal already carrying this client tag (duplicate protection)."""
+    for p in mt5.positions_get() or []:
+        if p.comment == tag:
+            return {"duplicate": True, "kind": "position", "ticket": p.ticket, "price": p.price_open, "volume": p.volume}
+    for o in mt5.orders_get() or []:
+        if o.comment == tag:
+            return {"duplicate": True, "kind": "pending", "ticket": o.ticket, "price": o.price_open, "volume": o.volume_current}
+    now = datetime.now(timezone.utc)
+    for d in mt5.history_deals_get(now - timedelta(days=3), now + timedelta(days=1)) or []:
+        if d.comment == tag and d.entry == mt5.DEAL_ENTRY_IN:
+            return {"duplicate": True, "kind": "deal", "ticket": d.position_id, "price": d.price, "volume": d.volume}
+    return None
+
+
+def _result(r, t0: float, extra: dict) -> dict:
+    if r is None:
+        raise HTTPException(502, f"order_send returned nothing: {mt5.last_error()}")
+    ok = r.retcode in RETCODE_OK
+    out = {"ok": ok, "retcode": r.retcode, "broker_comment": r.comment, "order": r.order, "deal": r.deal,
+           "price": r.price or extra.get("request_price"), "volume": r.volume,
+           "latency_ms": round((time.perf_counter() - t0) * 1000, 1), **extra}
+    if not ok:
+        out["reason"] = f"rejected by broker: retcode {r.retcode} {r.comment}"
+    return out
+
+
 @app.post("/orders", dependencies=auth)
-def place_order():
-    raise HTTPException(501, "Order execution is implemented in Phase 5 (demo first).")
+def place_order(o: OrderIn):
+    t0 = time.perf_counter()
+    with _lock:
+        _ensure_connected()
+        _demo_guard()
+        info = _symbol(o.symbol)
+        tag = _tag(o.client_id)
+        dup = _existing(tag)
+        if dup:
+            return {"ok": True, **dup, "tag": tag}
+        tick = mt5.symbol_info_tick(o.symbol)
+        if tick is None:
+            raise HTTPException(503, f"no price for {o.symbol} (market closed?)")
+        buy = o.side == "buy"
+        pending = o.type != "market"
+        if pending and not o.price:
+            raise HTTPException(422, "limit/stop orders need a price")
+        price = o.price if pending else (tick.ask if buy else tick.bid)
+        # stop-loss on the correct side, and at least the broker's minimum distance away
+        if (buy and o.stop_loss >= price) or (not buy and o.stop_loss <= price):
+            raise HTTPException(422, f"stop-loss {o.stop_loss} is on the wrong side of the entry {price}")
+        min_dist = (info.trade_stops_level or 0) * info.point
+        if abs(price - o.stop_loss) < min_dist or (o.take_profit and abs(o.take_profit - price) < min_dist):
+            raise HTTPException(422, f"SL/TP closer than the broker minimum ({info.trade_stops_level} points)")
+        if o.take_profit and ((buy and o.take_profit <= price) or (not buy and o.take_profit >= price)):
+            raise HTTPException(422, f"take-profit {o.take_profit} is on the wrong side of the entry {price}")
+        if pending:
+            otype = {("buy", "limit"): mt5.ORDER_TYPE_BUY_LIMIT, ("sell", "limit"): mt5.ORDER_TYPE_SELL_LIMIT,
+                     ("buy", "stop"): mt5.ORDER_TYPE_BUY_STOP, ("sell", "stop"): mt5.ORDER_TYPE_SELL_STOP}[(o.side, o.type)]
+        else:
+            otype = mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL
+        req = {
+            "action": mt5.TRADE_ACTION_PENDING if pending else mt5.TRADE_ACTION_DEAL,
+            "symbol": o.symbol, "volume": _volume(info, o.volume), "type": otype, "price": round(price, info.digits),
+            "sl": round(o.stop_loss, info.digits), "tp": round(o.take_profit, info.digits) if o.take_profit else 0.0,
+            "deviation": o.deviation_points, "magic": o.magic, "comment": tag,
+            "type_time": mt5.ORDER_TIME_GTC, "type_filling": _filling(info, pending),
+        }
+        if pending and o.expire_minutes:
+            exp = datetime.now(timezone.utc) + timedelta(minutes=o.expire_minutes)
+            req["type_time"] = mt5.ORDER_TIME_SPECIFIED
+            req["expiration"] = int(exp.timestamp() + _server_offset_seconds())
+        r = mt5.order_send(req)
+        return _result(r, t0, {"tag": tag, "request_price": req["price"], "spread_points": info.spread,
+                               "requested_volume": o.volume})
+
+
+@app.get("/orders", dependencies=auth)
+def pending_orders():
+    with _lock:
+        _ensure_connected()
+        return [
+            {"ticket": o.ticket, "symbol": o.symbol, "type": o.type, "volume": o.volume_current, "price": o.price_open,
+             "stop_loss": o.sl or None, "take_profit": o.tp or None, "magic": o.magic, "tag": o.comment,
+             "placed_at": _to_utc(o.time_setup)}
+            for o in (mt5.orders_get() or [])
+        ]
+
+
+@app.delete("/orders/{ticket}", dependencies=auth)
+def cancel_order(ticket: int):
+    t0 = time.perf_counter()
+    with _lock:
+        _ensure_connected()
+        _demo_guard()
+        r = mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE, "order": ticket})
+        return _result(r, t0, {"ticket": ticket})
+
+
+class CloseIn(BaseModel):
+    volume: float | None = None   # None = whole position
+    deviation_points: int = 20
+
+
+@app.post("/positions/{ticket}/close", dependencies=auth)
+def close_position(ticket: int, body: CloseIn | None = None):
+    t0 = time.perf_counter()
+    body = body or CloseIn()
+    with _lock:
+        _ensure_connected()
+        _demo_guard()
+        pos = next(iter(mt5.positions_get(ticket=ticket) or []), None)
+        if pos is None:
+            raise HTTPException(404, f"no open position {ticket}")
+        info = _symbol(pos.symbol)
+        tick = mt5.symbol_info_tick(pos.symbol)
+        buy = pos.type == mt5.POSITION_TYPE_BUY
+        r = mt5.order_send({
+            "action": mt5.TRADE_ACTION_DEAL, "position": ticket, "symbol": pos.symbol,
+            "volume": _volume(info, body.volume or pos.volume), "type": mt5.ORDER_TYPE_SELL if buy else mt5.ORDER_TYPE_BUY,
+            "price": tick.bid if buy else tick.ask, "deviation": body.deviation_points, "magic": pos.magic,
+            "comment": pos.comment, "type_time": mt5.ORDER_TIME_GTC, "type_filling": _filling(info, False),
+        })
+        return _result(r, t0, {"ticket": ticket})
+
+
+class ModifyIn(BaseModel):
+    stop_loss: float
+    take_profit: float | None = None
+
+
+@app.post("/positions/{ticket}/modify", dependencies=auth)
+def modify_position(ticket: int, body: ModifyIn):
+    t0 = time.perf_counter()
+    with _lock:
+        _ensure_connected()
+        _demo_guard()
+        pos = next(iter(mt5.positions_get(ticket=ticket) or []), None)
+        if pos is None:
+            raise HTTPException(404, f"no open position {ticket}")
+        r = mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "position": ticket, "symbol": pos.symbol,
+                            "sl": body.stop_loss, "tp": body.take_profit or 0.0})
+        return _result(r, t0, {"ticket": ticket})

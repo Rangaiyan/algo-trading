@@ -13,6 +13,9 @@ class CostConfig:
     slippage_pips: float = 0.1        # adverse, applied on market fills and on stop exits
     swap_long_per_lot: float = -3.0   # per lot per night (account currency)
     swap_short_per_lot: float = 0.5
+    # "mid": candle prices are mid (synthetic data); "bid": candle prices are BID (MT5 history), so the ask is
+    # price + full spread. Buys fill at the ask and exit on the bid; sells fill at the bid and exit at the ask.
+    price_basis: str = "mid"
     triple_swap_weekday: int = 2      # Python weekday (Mon=0) whose rollover is charged x3; FX = Wednesday
     stress: float = 1.0               # Gate-1 cost stress: 1.5 = spread/slippage +50%
 

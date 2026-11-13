@@ -80,6 +80,8 @@ def make_config(meta: dict | None, ref_price: float, risk_pct: float = 0.5, cost
     if swap:
         for k, v in swap.items():
             setattr(cfg.costs, k, v)
+    if meta and meta.get("source") == "mt5":
+        cfg.costs.price_basis = "bid"  # MT5 candles are built from BID prices
     if spec and spec.get("spread_points"):
         # floor at the broker's typical (live) spread: recorded bar spreads are per-bar minimums
         cfg.costs.min_spread = float(spec["spread_points"]) * float(spec["point"])

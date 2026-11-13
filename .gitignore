@@ -6,3 +6,6 @@ __pycache__/
 *.parquet
 
 data_store/
+
+# live trading state (sessions, order log, risk state, equity snapshots)
+runtime/

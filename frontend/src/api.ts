@@ -173,3 +173,65 @@ export type GenJob = Omit<OptJob, "result" | "request"> & { kind: string; reques
 export const startGenerate = (req: GenRequest) => post("/generate", req).then((r) => jx<{ job_id: string }>(r));
 export const getGenJob = (id: string) => fetch(`${API}/optimize/${id}`).then((r) => jx<GenJob>(r));
 export const saveCandidate = (job_id: string, candidate: number, name = "") => post("/library", { job_id, candidate, name }).then((r) => jx<LibFull>(r));
+
+// ---------------- Phase 5: trading engine, risk, investment, reports ----------------
+export type TradeSession = {
+  id: string; name: string; strategy: string; symbol: string; timeframe: string; params: Record<string, unknown>; mode: "paper" | "shakedown";
+  library_id: string | null; magic: number; status: "running" | "paused" | "stopped"; created_at: string; started_at?: string;
+  last_bar: string | null; last_signal: { bar: string; side: string; entry: number | null; sl: number; tp: number | null; reason: string; decision?: string } | null;
+  last_error: string | null;
+};
+export type OrderRec = {
+  tag: string; session_id: string; session_name: string; strategy: string; symbol: string; side: string; type: string; lots: number;
+  requested_price: number; stop_loss: number; take_profit: number | null; state: string; placed_at: string; mode: string;
+  fill_price?: number; slippage_pips?: number; spread_pips?: number; latency_ms?: number; retcode?: number; reason?: string;
+  exit_price?: number; pnl?: number; exit_reason?: string; closed_at?: string; risk_money?: number;
+};
+export type RiskConfig = {
+  risk_pct: number; max_risk_pct: number; max_open_positions: number; max_per_symbol: number; max_usd_exposure: number;
+  daily_loss_limit_pct: number; weekly_loss_limit_pct: number; max_drawdown_pct: number; min_margin_level_pct: number;
+  max_trades_per_day: number; max_spread_pips: Record<string, number>;
+};
+export type TradingStatus = {
+  state: { last_tick: string | null; last_error: string | null; connected: boolean | null; issues: { key: string; msg: string; at: string }[] };
+  risk: { config: RiskConfig; state: { halt: string | null; halt_reason: string; halted_at: string | null; events: { at: string; kind: string; msg: string }[] };
+          usage: { day_pct?: number; week_pct?: number; drawdown_pct?: number; limits?: { day: number; week: number; drawdown: number } } };
+  sessions: TradeSession[]; orders: OrderRec[]; loop_seconds: number; account: LiveAccount;
+  execution: { orders: number; filled: number; rejected: number; avg_slippage_pips: number | null; avg_spread_pips: number | null; avg_latency_ms: number | null; rejection_rate: number | null };
+};
+export const tradingStatus = () => fetch(`${API}/trading/status`).then((r) => jx<TradingStatus>(r));
+export const addTradeSession = (body: { library_id?: string; strategy?: string; symbol?: string; timeframe?: string; params?: Record<string, unknown>; name?: string; acknowledge_unvalidated?: boolean }) =>
+  post("/trading/sessions", body).then((r) => jx<TradeSession>(r));
+export const setSessionStatus = (id: string, status: string) => post(`/trading/sessions/${id}/status`, { status }).then((r) => jx<TradeSession>(r));
+export const deleteSession = (id: string) => fetch(`${API}/trading/sessions/${id}`, { method: "DELETE" }).then((r) => jx<unknown>(r));
+export const tickNow = () => post("/trading/tick").then((r) => jx<{ alerts: string[] }>(r));
+export const updateRisk = (patch: Partial<RiskConfig>) => fetch(`${API}/risk/config`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) }).then((r) => jx<RiskConfig>(r));
+export const killSwitch = (include_manual = false) => post("/risk/kill", { confirm: "FLATTEN", include_manual }).then((r) => jx<{ closed: unknown[]; cancelled: unknown[]; failed: { reason: string }[] }>(r));
+export const resumeTrading = () => post("/risk/resume").then((r) => jx<{ halted: boolean; note: string }>(r));
+export type Investment = {
+  currency: string; server: string; mode: string; invested: number; deposits: number; withdrawals: number; current_value: number; net_profit: number;
+  return_pct: number | null; today_pnl: number; twr_pct: number | null; xirr_pct: number | null; max_drawdown_pct: number; best_day_pct: number | null; worst_day_pct: number | null;
+  costs: { commission: number; swap: number; fees: number }; curve: { t: string; balance: number; index: number; cash: number }[];
+  monthly_pct: { month: string; pct: number }[]; by_strategy: { strategy: string; trades: number; pnl: number }[]; by_symbol: { symbol: string; pnl: number }[];
+  ledger: { ts: string; type: string; amount: number; comment: string }[]; as_of: string;
+};
+export const getInvestment = () => fetch(`${API}/investment/summary`).then((r) => jx<Investment>(r));
+export type ReportSummary = { period: string; from: string | null; to: string; account: string; mode: string; currency: string; equity: number; trades: number; net_pnl: number;
+  wins: number; losses: number; win_rate: number | null; profit_factor: number | null; best: number | null; worst: number | null;
+  by_strategy: { strategy: string; trades: number; pnl: number; wins: number }[]; by_symbol: { symbol: string; trades: number; pnl: number }[]; text: string; disclaimer: string };
+export const reportSummary = (period: string) => fetch(`${API}/reports/summary?period=${period}`).then((r) => jx<ReportSummary>(r));
+export const reportUrl = (kind: "trades.csv" | "performance.html", period: string) => `${API}/reports/${kind}?period=${period}`;
+
+// ---------------- Gate 0: engine vs MT5 Strategy Tester ----------------
+export type Gate0Info = { path: string; exists: boolean; modified?: string; trades?: number | null; tolerances: Record<string, number>; ea_source: string };
+export type Gate0Result = {
+  symbol: string; timeframe: string; params: Record<string, number>; lots: number; period: string[]; verdict: "pass" | "fail";
+  checks: { check: string; value: string; required: string; ok: boolean }[];
+  summary: { ea_trades: number; our_trades: number; matched: number; match_rate: number; ea_net: number; our_net: number; ea_pf: number | null; our_pf: number | null;
+    exit_reason_agreement: number; median_entry_diff_pips: number | null; median_exit_diff_pips: number | null; same_bar_exit_share: number | null };
+  unmatched_mt5: { side: string; open_time: string; open_price: number }[]; unmatched_rinz: { side: string; open_time: string; open_price: number }[];
+  largest_differences: { side: string; open_time: string; entry_diff_pips: number; exit_diff_pips: number; ea_reason: string; our_reason: string; ea_pnl: number; our_pnl: number }[];
+  notes: string[]; costs: Record<string, unknown>;
+};
+export const gate0Info = () => fetch(`${API}/gate0/info`).then((r) => jx<Gate0Info>(r));
+export const gate0Compare = (csv?: string) => post("/gate0/compare", csv ? { csv } : {}).then((r) => jx<Gate0Result>(r));
