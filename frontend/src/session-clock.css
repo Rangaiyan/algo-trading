@@ -1,0 +1,38 @@
+/* The session clock: the one bold element of the app. Everything around it stays quiet. */
+.sc { --name: 190px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px 14px; margin-bottom: 20px; }
+.sc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.sc-head h2 { margin: 0; font-size: 22px; font-stretch: 92%; max-width: 60ch; }
+.sc-head .muted { font-family: var(--mono); font-size: 14px; white-space: nowrap; }
+.sc-local { font-family: var(--sans); }
+
+.sc-grid { position: relative; display: grid; gap: 8px; }
+.sc-row, .sc-axis { display: grid; grid-template-columns: var(--name) 1fr; align-items: center; gap: 16px; }
+.sc-name { display: flex; flex-direction: column; line-height: 1.25; }
+.sc-name b { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
+.sc-name i { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--sc); flex: none; }
+.sc-name i.on { background: var(--sc); }
+.sc-name small { color: var(--muted); font-size: 13px; padding-left: 17px; }
+
+.sc-track { position: relative; height: 30px; border-radius: 6px; background: var(--inset);
+  background-image: repeating-linear-gradient(to right, transparent 0 calc(100% / 8 - 1px), var(--line) calc(100% / 8 - 1px) calc(100% / 8)); }
+.sc-seg { position: absolute; top: 5px; bottom: 5px; border-radius: 4px; background: color-mix(in srgb, var(--sc) 38%, transparent);
+  transform-origin: left; animation: sc-grow .7s cubic-bezier(.2, .7, .2, 1) both; }
+.sc-seg.live { background: var(--sc); }
+.sc-row:nth-child(2) .sc-seg { animation-delay: .06s; } .sc-row:nth-child(3) .sc-seg { animation-delay: .12s; } .sc-row:nth-child(4) .sc-seg { animation-delay: .18s; }
+@keyframes sc-grow { from { transform: scaleX(0); opacity: 0; } }
+
+.sc-ticks { position: relative; height: 18px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.sc-ticks span { position: absolute; transform: translateX(-50%); }
+.sc-ticks span:first-child { transform: none; } .sc-ticks span:last-child { transform: translateX(-100%); }
+
+/* "now" line spans every row; positioned inside the track column only */
+.sc-now { position: absolute; top: -6px; bottom: 22px; pointer-events: none;
+  left: calc(var(--name) + 16px + (100% - var(--name) - 16px) * var(--x)); width: 0; border-left: 2px solid var(--text); }
+.sc-now span { position: absolute; top: -18px; left: 0; transform: translateX(-50%); font-size: 12px; font-weight: 600; background: var(--panel); padding: 0 4px; }
+
+@media (max-width: 640px) {
+  .sc { --name: 96px; padding: 16px 14px 10px; }
+  .sc-head h2 { font-size: 18px; }
+  .sc-name small { display: none; }
+  .sc-ticks span:nth-child(even) { display: none; }
+}

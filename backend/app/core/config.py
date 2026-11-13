@@ -19,11 +19,6 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_ids: str = ""
 
-    # OANDA (practice by default)
-    oanda_token: str = ""
-    oanda_account_id: str = ""
-    oanda_practice: bool = True
-
     # MT5 gateway (Windows service)
     mt5_gateway_url: str = ""
     mt5_gateway_token: str = ""

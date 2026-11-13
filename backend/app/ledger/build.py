@@ -6,6 +6,8 @@ real data/paper trading exist. Every payload carries source="demo-synthetic".
 from __future__ import annotations
 
 import json
+import threading
+import time
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -30,6 +32,7 @@ SETTINGS = {  # shown as chips on session cards
     "CANDLE-1": {"rr": 2.0, "sl_buffer_atr": 0.2, "trend": "EMA200"},
 }
 CACHE_DIR = Path("data_store")
+_build_lock = threading.Lock()
 
 
 def _trade_row(t, tid: int, session_id: str, desk: str) -> dict:
@@ -83,7 +86,13 @@ def load_ledger(days: int = 150, symbols: list[str] | None = None, rebuild: bool
     path = CACHE_DIR / key
     if path.exists() and not rebuild:
         return json.loads(path.read_text())
-    data = build_ledger(days, symbols)
-    CACHE_DIR.mkdir(exist_ok=True)
-    path.write_text(json.dumps(data))
-    return data
+    requested_at = time.time()
+    # One build at a time: a build takes ~1 min, and parallel requests (auto-refresh, other
+    # pages) used to each start their own build and slow every one of them down.
+    with _build_lock:
+        if path.exists() and (not rebuild or path.stat().st_mtime >= requested_at):
+            return json.loads(path.read_text())  # built by another request while we waited
+        data = build_ledger(days, symbols)
+        CACHE_DIR.mkdir(exist_ok=True)
+        path.write_text(json.dumps(data))
+        return data

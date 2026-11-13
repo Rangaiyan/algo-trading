@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Eye, LogOut, Menu, Star, Tag } from "lucide-react";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Moon, OctagonX, PanelLeftClose, PanelLeftOpen, Sun } from "lucide-react";
 import { API } from "./api";
-import { DESK_PILLS, FAVORITES, PAGES } from "./nav";
-import { SESSIONS, activeSessions, fxMarketOpen } from "./sessions";
+import { GROUPS, PAGES } from "./nav";
+import { setTheme, useTheme } from "./theme";
 
 type Status = {
   environment: string; mode: "demo" | "live"; live_trading_enabled: boolean;
-  brokers: { id: string; label: string; configured: boolean; connected: boolean }[];
+  brokers: { id: string; label: string; configured: boolean; connected: boolean; detail?: string; account_mode?: string; server?: string }[];
 };
 const pad = (n: number) => String(n).padStart(2, "0");
+const SIDEBAR_KEY = "rinz.sidebar";
 
 function useStatus() {
   const [status, setStatus] = useState<Status | null>(null);
@@ -32,88 +33,96 @@ function useStatus() {
   return { status, latency };
 }
 
+/** Sidebar starts open; once closed it stays closed (remembered) until opened again. */
+function useSidebar() {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_KEY) !== "closed"; } catch { return true; }
+  });
+  useEffect(() => { try { localStorage.setItem(SIDEBAR_KEY, open ? "open" : "closed"); } catch { /* ignore */ } }, [open]);
+  return [open, setOpen] as const;
+}
+
+/** Four session arcs around a dot: the brand mark echoes the session clock. */
+function Mark() {
+  const arcs = ["var(--s-sydney)", "var(--s-tokyo)", "var(--s-london)", "var(--s-newyork)"];
+  return (
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+      {arcs.map((c, i) => (
+        <path key={c} d="M13 2.5 A10.5 10.5 0 0 1 23.5 13" fill="none" stroke={c} strokeWidth="3" strokeLinecap="round"
+          transform={`rotate(${i * 90} 13 13)`} />
+      ))}
+      <circle cx="13" cy="13" r="3" fill="var(--text)" />
+    </svg>
+  );
+}
+
 export default function Shell() {
-  const nav = useNavigate();
   const loc = useLocation();
   const { status, latency } = useStatus();
   const [now, setNow] = useState(new Date());
-  const [open, setOpen] = useState(false);
-  const [pinned, setPinned] = useState(() => localStorage.getItem("rinz.pinned") === "1");
-  const [loading, setLoading] = useState(false);
-  const [labels, setLabels] = useState(true);
-  const [fontStep, setFontStep] = useState(() => Number(localStorage.getItem("rinz.font") ?? 0));
-  const first = useRef(true);
+  const [open, setOpen] = useSidebar();
+  const [killNote, setKillNote] = useState(false);
+  const theme = useTheme();
 
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(id); }, []);
-  useEffect(() => { document.documentElement.style.setProperty("--font-size", `${12 + fontStep}px`); localStorage.setItem("rinz.font", String(fontStep)); }, [fontStep]);
-  useEffect(() => { localStorage.setItem("rinz.pinned", pinned ? "1" : "0"); }, [pinned]);
-  useEffect(() => { // branded loader on route change (not on first paint)
-    if (first.current) { first.current = false; return; }
-    setLoading(true); const t = setTimeout(() => setLoading(false), 350); return () => clearTimeout(t);
-  }, [loc.pathname]);
+  useEffect(() => { if (!killNote) return; const id = setTimeout(() => setKillNote(false), 5000); return () => clearTimeout(id); }, [killNote]);
 
-  const go = (path: string) => { nav(path); if (!pinned) setOpen(false); };
   const active = PAGES.find((p) => p.path === loc.pathname) ?? PAGES[0];
-  const live = activeSessions(now).map((s) => s.id);
-  const marketOpen = fxMarketOpen(now);
   const mode = status?.mode ?? "demo";
   const utc = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
-  const date = now.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+  const apiUp = latency !== null;
+  const broker = status?.brokers.find((b) => b.connected) ?? status?.brokers.find((b) => b.configured) ?? status?.brokers[0];
+  const isDesk = (g: string) => g === "Strategy desks";
 
   return (
-    <>
-      <aside className="sh-rail" aria-label="Pages">
-        <button className="rail-btn" title="Menu" onClick={() => setOpen(true)}><Menu size={15} /></button>
-        <button className="rail-btn" title="Favorites" style={{ color: "var(--amber)" }} onClick={() => setOpen(true)}><Star size={15} /></button>
-        {PAGES.map((p) => (
-          <button key={p.id} title={`${p.label}${p.status !== "ready" ? ` (${p.status})` : ""}`} onClick={() => go(p.path)}
-            className={`rail-btn ${active.id === p.id ? "active" : ""} ${p.status !== "ready" ? "planned" : ""}`} style={{ color: p.color, ["--c" as string]: p.color }}>
-            <p.icon size={15} />
-          </button>
-        ))}
+    <div className={`sh ${open ? "side-open" : "side-closed"}`}>
+      <aside className="sh-side" aria-label="Main navigation">
+        <NavLink to="/" className="sh-brand" aria-label="Rinz Algo home"><Mark />{open && <b>Rinz Algo</b>}</NavLink>
+        <nav className="sh-nav">
+          {GROUPS.map((g) => (
+            <div key={g} className="sh-group">
+              {open && <h4>{g}</h4>}
+              {PAGES.filter((p) => p.group === g).map((p) => (
+                <NavLink key={p.id} to={p.path} end title={open ? undefined : p.label}
+                  className={({ isActive }) => `sh-link ${isActive ? "active" : ""}`}
+                  style={{ ["--c" as string]: isDesk(g) ? p.color : "var(--accent)" }}>
+                  <p.icon size={18} color={isDesk(g) ? p.color : "currentColor"} aria-hidden="true" />
+                  {open && <span>{p.label}</span>}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <button className="sh-toggle" onClick={() => setOpen(!open)} aria-label={open ? "Collapse sidebar" : "Expand sidebar"} title={open ? "Collapse" : "Expand"}>
+          {open ? <><PanelLeftClose size={18} /><span>Collapse</span></> : <PanelLeftOpen size={18} />}
+        </button>
       </aside>
 
-      {(open || pinned) && !pinned && <div className="sh-scrim" onClick={() => setOpen(false)} />}
-      <nav className={`sh-drawer ${open ? "open" : ""} ${pinned ? "pinned" : ""}`} aria-label="Navigation drawer">
-        <button className="pin" onClick={() => setPinned(!pinned)}>{pinned ? "UNPIN" : "PIN OPEN"} ›</button>
-        <h4>★ FAVORITES</h4>
-        {[PAGES[0], ...FAVORITES].map((p) => (
-          <button key={p.id} className={`drawer-item ${active.id === p.id ? "active" : ""}`} style={{ ["--c" as string]: p.color }} onClick={() => go(p.path)}>
-            <p.icon size={14} color={p.color} /> {p.label}
-            {p.status !== "ready" && <small>{p.status === "inferred" ? "?" : "soon"}</small>}
-          </button>
-        ))}
-      </nav>
-
       <header className="sh-top">
-        <div className="sh-brand"><b>RINZ ALGO</b><small>{date}</small></div>
-        <span className="sh-clock" title="UTC">{utc}<small className="muted"> UTC</small></span>
-        <span className={`sh-env ${mode}`}>{mode === "live" ? "LIVE" : status?.environment === "local" ? "DEV · DEMO" : "DEMO"}</span>
-        <button className="pill fill" onClick={() => setOpen(true)}><Menu size={11} /> MENU</button>
-        {DESK_PILLS.map((p) => (
-          <button key={p.id} className={`pill ${active.id === p.id ? "on" : ""}`} style={{ color: p.color }} onClick={() => go(p.path)}><p.icon size={11} /> {p.short}</button>
-        ))}
-        <span className="sess" title={marketOpen ? "Active sessions" : "Forex market closed (Fri 17:00 → Sun 17:00 New York)"}>
-          {marketOpen ? SESSIONS.map((s) => <i key={s.id} className={live.includes(s.id) ? "on" : ""} style={live.includes(s.id) ? { background: s.color } : undefined}>{s.label.slice(0, 3).toUpperCase()}</i>)
-            : <i>MARKET CLOSED</i>}
-        </span>
-        {status?.brokers.map((b) => (
-          <span key={b.id} className="pill" style={{ color: b.connected ? "var(--green)" : "var(--muted)" }} title={b.connected ? "Connected" : b.configured ? "Configured, not connected" : "Not configured"}>
-            <i className={`dot ${b.connected ? "ok" : b.configured ? "warn" : ""}`} /> {b.label}
-          </span>
-        ))}
-        <span className="pill" title="API latency"><i className={`dot ${latency === null ? "bad" : "ok"}`} /> API {latency === null ? "DOWN" : `${latency}ms`}</span>
+        <h1 className="sh-title">{active.label}</h1>
         <span className="sh-spacer" />
-        <button className={`pill ${labels ? "on" : ""}`} onClick={() => setLabels(!labels)}><Tag size={11} /> LABELS</button>
-        <button className="pill" onClick={() => setFontStep((fontStep + 1) % 4)} title="Font size">Aa</button>
-        <span className="pill" title="Theme"><i className="dot ok" /> MONO DARK</span>
-        <button className="pill" title="Hide values"><Eye size={11} /></button>
-        <button className="kill" onClick={() => alert("Kill switch arrives with execution (Phase 5)")}>KILL SWITCH</button>
-        <button className="pill" title="Logout"><LogOut size={11} /></button>
+        <div className="sh-conn" role="status" aria-label="Connection status">
+          <span title={apiUp ? `Backend responding in ${latency} ms` : "Backend not reachable on port 8000"}>
+            <i className={`sig ${apiUp ? "ok" : "bad"}`} />{apiUp ? `Server ${latency} ms` : "Server offline"}
+          </span>
+          <span title={broker?.detail ?? "No broker set up"}>
+            <i className={`sig ${broker?.connected ? "ok" : "off"}`} />
+            {broker ? `${broker.server ?? broker.label}${broker.connected ? "" : broker.configured ? " not connected" : " not set up"}` : "No broker"}
+          </span>
+        </div>
+        <span className="sh-clock" title="Coordinated Universal Time">{utc}<small>UTC</small></span>
+        <span className={`sh-env ${mode}`}>{mode === "live" ? "Live money" : "Demo"}</span>
+        <button className="icon-btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={theme === "dark" ? "Light mode" : "Dark mode"}>
+          {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+        </button>
+        <button className="kill" onClick={() => setKillNote(true)} title="Close all positions and stop every strategy">
+          <OctagonX size={16} /><span>Kill switch</span>
+        </button>
       </header>
+      {killNote && <div className="kill-note" role="alert">The kill switch arrives with order execution in Phase 5. Nothing is trading automatically yet.</div>}
 
-      {loading && <div className="sh-loader" aria-live="polite"><div><div className="ring" /><b style={{ letterSpacing: ".2em" }}>RINZ ALGO</b><div className="muted" style={{ fontSize: 10 }}>waking the desk</div><div className="bar"><i /></div></div></div>}
-      <main className={`sh-main ${pinned ? "pinned" : ""} ${labels ? "" : "no-labels"}`}><Outlet /></main>
-    </>
+      <main className="sh-main"><Outlet /></main>
+    </div>
   );
 }

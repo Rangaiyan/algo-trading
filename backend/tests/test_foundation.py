@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from app.brokers.oanda import lots_to_units
 from app.brokers.simulated import SimulatedBroker
 from app.domain import Order, OrderType, Side
 from app.main import app
@@ -53,11 +52,6 @@ def test_forex_weekend_closed():
     assert forex_market_open(datetime(2026, 11, 11, 12, 0, tzinfo=UTC))  # Wednesday
 
 
-def test_oanda_units():
-    assert lots_to_units(0.2, True) == 20_000
-    assert lots_to_units(0.2, False) == -20_000
-
-
 def test_simulated_broker_idempotent_orders():
     b = SimulatedBroker()
     b.set_price("EURUSD", 1.0842)
@@ -81,8 +75,67 @@ def test_backtest_returns_curve_and_trades():
     assert {s["id"] for s in client.get("/backtests/strategies").json()} >= {"EMA-1", "EMA-2"}
 
 
-def test_status_reports_brokers_and_mode():
+def test_status_reports_brokers_and_mode(monkeypatch):
+    import app.api.routes as routes
+    monkeypatch.setattr(routes, "mt5_connection", lambda: {"connected": True, "detail": "Demo-Server - DEMO", "account_mode": "demo"})
     d = client.get("/status").json()
     assert d["mode"] == "demo"
-    assert {b["id"] for b in d["brokers"]} == {"mt5", "oanda"}
-    assert all(b["connected"] is False for b in d["brokers"])  # nothing is connected yet
+    assert [b["id"] for b in d["brokers"]] == ["mt5"]  # MT5 is the only broker (OANDA is not available in India)
+    assert d["brokers"][0]["connected"] is True
+
+
+def test_mt5_probe_reports_unreachable_gateway(monkeypatch):
+    from app.brokers import mt5_probe
+    from app.core.config import Settings
+    monkeypatch.setattr(mt5_probe, "get_settings", lambda: Settings(mt5_gateway_url="http://127.0.0.1:9", mt5_gateway_token="x"))
+    r = mt5_probe._probe()
+    assert r["connected"] is False and "not reachable" in r["detail"]
+
+
+def test_mt5_probe_not_configured(monkeypatch):
+    from app.brokers import mt5_probe
+    from app.core.config import Settings
+    monkeypatch.setattr(mt5_probe, "get_settings", lambda: Settings(mt5_gateway_url=""))
+    assert mt5_probe._probe()["connected"] is False
+
+
+def test_account_summary_pnl():
+    from app.api.account import summarize
+    now = datetime(2026, 11, 12, 15, tzinfo=UTC)
+    acct = {"server": "Demo", "mode": "demo", "currency": "USD", "balance": 210.0, "equity": 212.5,
+            "margin_used": 5.0, "free_margin": 207.5, "leverage": 100}
+    pos = [{"id": "9", "symbol": "EURUSD", "unrealized_pnl": 2.5}]
+    z = dict(commission=0.0, swap=0.0, fee=0.0, volume=0.01, price=1.1, symbol="EURUSD")
+    deals = [
+        {**z, "position_id": 0, "ts": "2026-11-01T00:00:00+00:00", "type": "balance", "entry": "in", "profit": 200.0},
+        {**z, "position_id": 1, "ts": "2026-11-10T10:00:00+00:00", "type": "buy", "entry": "in", "profit": 0.0},
+        {**z, "position_id": 1, "ts": "2026-11-10T11:00:00+00:00", "type": "sell", "entry": "out", "profit": 15.0, "commission": -0.5},
+        {**z, "position_id": 2, "ts": "2026-11-12T09:00:00+00:00", "type": "sell", "entry": "in", "profit": 0.0},
+        {**z, "position_id": 2, "ts": "2026-11-12T10:00:00+00:00", "type": "buy", "entry": "out", "profit": -4.5},
+    ]
+    d = summarize(acct, pos, deals, now)
+    assert d["deposits"] == 200.0
+    assert d["pnl"] == {"today": -4.5, "week": 10.0, "month": 10.0, "all": 10.0}
+    assert d["total_pnl"] == 12.5 and d["floating"] == 2.5
+    assert (d["trades"], d["wins"], d["losses"]) == (2, 1, 1)
+    assert d["recent"][0]["position_id"] == 2 and d["recent"][0]["side"] == "sell"
+    assert d["margin_level"] == 4250.0 and d["return_pct"] == 6.25
+
+
+def test_desk_summary_splits_trades_by_magic():
+    from app.api.account import desk_summary
+    z = dict(commission=0.0, swap=0.0, fee=0.0, volume=0.01, price=1.1, symbol="EURUSD")
+    def trade(pid, magic, pnl, day):
+        return [{**z, "position_id": pid, "magic": magic, "ts": f"2026-11-{day:02d}T10:00:00+00:00", "type": "buy", "entry": "in", "profit": 0.0},
+                {**z, "position_id": pid, "magic": magic, "ts": f"2026-11-{day:02d}T11:00:00+00:00", "type": "sell", "entry": "out", "profit": pnl}]
+    deals = trade(1, 1001, 10.0, 3) + trade(2, 1002, -4.0, 4) + trade(3, 2001, 7.0, 5) + trade(4, 0, 3.0, 6)
+    pos = [{"id": "9", "symbol": "GBPUSD", "magic": 1001, "unrealized_pnl": 1.5}, {"id": "8", "symbol": "EURUSD", "magic": 0, "unrealized_pnl": 2.0}]
+    ema = desk_summary("ema", pos, deals)
+    assert (ema["trades"], ema["net"], ema["floating"]) == (2, 6.0, 1.5)
+    assert ema["profit_factor"] == 2.5 and ema["win_rate"] == 0.5
+    assert [s["strategy"] for s in ema["strategies"]] == ["EMA-1", "EMA-2"]
+    assert ema["curve"] == [{"t": "2026-11-03T11:00:00+00:00", "cum": 10.0}, {"t": "2026-11-04T11:00:00+00:00", "cum": 6.0}]
+    assert desk_summary("candle", pos, deals)["net"] == 7.0
+    manual = desk_summary("manual", pos, deals)
+    assert manual["trades"] == 1 and manual["positions"][0]["id"] == "8"
+    assert desk_summary("ict", pos, deals)["trades"] == 0

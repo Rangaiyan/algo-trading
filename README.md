@@ -1,6 +1,6 @@
 # Rinz Algo
 
-Algo trading platform: backtest → paper → live (MT5 + OANDA). Full plan: `docs/rinz-algo-project-documentation.md`.
+Algo trading platform: backtest → paper → live (MT5 only; OANDA is not available to Indian residents). Full plan: `docs/rinz-algo-project-documentation.md`.
 
 ## Run locally
 ```bash

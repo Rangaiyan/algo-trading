@@ -36,7 +36,7 @@ class Instrument:
     lot_size: float = 100_000
     tick_size: float = 0.00001
     pip_size: float = 0.0001
-    broker_symbols: dict[str, str] = field(default_factory=dict)  # {"mt5": "EURUSD.m", "oanda": "EUR_USD"}
+    broker_symbols: dict[str, str] = field(default_factory=dict)  # {"mt5": "EURUSD.m"}
 
 
 @dataclass(frozen=True)

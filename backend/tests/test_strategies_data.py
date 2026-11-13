@@ -4,7 +4,6 @@ import pandas as pd
 from app.backtest.engine import BacktestConfig, Context, run_backtest
 from app.backtest.metrics import compute_metrics
 from app.data import pipeline as P
-from app.data.oanda_candles import parse_candles
 from app.domain import Bar, Instrument, Market
 from app.strategies.candle.strategies import CandlestickBaseline
 from app.strategies.ema.strategies import EMACrossover, EMATrendPullback
@@ -82,12 +81,3 @@ def test_csv_import_converts_to_utc(tmp_path):
     p.write_text("time,open,high,low,close\n2026-01-15 09:00,1.1,1.2,1.0,1.15\n")
     df = P.load_csv(p, tz="America/New_York")
     assert str(df.index[0]) == "2026-01-15 14:00:00+00:00"
-
-
-def test_oanda_parse_skips_incomplete_candle():
-    payload = {"candles": [
-        {"time": "2026-01-05T00:00:00.000000000Z", "volume": 10, "complete": True,
-         "mid": {"o": "1.1", "h": "1.2", "l": "1.0", "c": "1.15"}},
-        {"time": "2026-01-05T00:15:00.000000000Z", "volume": 3, "complete": False,
-         "mid": {"o": "1.15", "h": "1.2", "l": "1.1", "c": "1.16"}}]}
-    assert len(parse_candles(payload)) == 1

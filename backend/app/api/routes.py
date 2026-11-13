@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
+from app.brokers.mt5_probe import mt5_connection
 from app.core.config import get_settings
 from app.domain import Market
 from app.markets.registry import get_market, market_status
@@ -9,6 +10,7 @@ router = APIRouter()
 
 def system_status() -> dict:
     s = get_settings()
+    mt5 = mt5_connection() if s.mt5_gateway_url else {"connected": False, "detail": "Not set up"}
     return {
         "app": s.app_name,
         "environment": s.environment,
@@ -16,8 +18,7 @@ def system_status() -> dict:
         "markets": market_status(),
         "mode": "live" if s.live_trading_enabled else "demo",
         "brokers": [
-            {"id": "mt5", "label": "MT5", "configured": bool(s.mt5_gateway_url), "connected": False},
-            {"id": "oanda", "label": "OANDA", "configured": bool(s.oanda_token), "connected": False},
+            {"id": "mt5", "label": "MT5", "configured": bool(s.mt5_gateway_url), **mt5},
         ],
     }
 

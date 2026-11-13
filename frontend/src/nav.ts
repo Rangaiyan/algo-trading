@@ -1,85 +1,18 @@
-import {
-  Activity, AlarmClock, Archive, BarChart3, BookOpen, CloudSun, Crosshair, FlaskConical, Funnel,
-  Gauge, Hourglass, History, Layers, LayoutDashboard, Music2, NotebookPen, Rocket, Trophy,
-  Wallet, Zap, HeartCrack, type LucideIcon,
-} from "lucide-react";
+import { CandlestickChart, Crosshair, FlaskConical, Hand, LayoutDashboard, Layers, Zap, type LucideIcon } from "lucide-react";
 
-export type PageStatus = "ready" | "planned" | "inferred";
-export type Page = {
-  id: string; path: string; label: string; short: string; icon: LucideIcon; color: string;
-  status: PageStatus; was?: string; summary: string; features: string[];
-};
+export type Page = { id: string; path: string; label: string; icon: LucideIcon; color: string; group: string };
 
-export const DESK_COLORS = { ema: "#8b5cf6", ict: "#f97316", smc: "#ec4899", candle: "#2dd4bf" } as const;
+export const DESK_COLORS = { ema: "#7fb0f0", ict: "#f0965a", smc: "#d98fc0", candle: "#5fc9c0" } as const;
 
+/** Only the pages the forex workflow actually uses. */
 export const PAGES: Page[] = [
-  { id: "dashboard", path: "/", label: "Dashboard", short: "HOME", icon: LayoutDashboard, color: "#e6e8ee", status: "ready",
-    summary: "System status and today's overview.", features: [] },
-  { id: "aurith", path: "/aurith", label: "Aurith", short: "AURITH", icon: Activity, color: "#2dd4bf", status: "planned", was: "Aurith",
-    summary: "Live home: today's P&L, open positions, desks, hour-by-hour, edge stats, AI read and Ask-the-Desk chat.",
-    features: ["Hero P&L with booked / floating / peak / low and mood status", "THE DESKS tiles with open counts", "Running P&L by symbol with long/short split",
-      "STILL ON THE TABLE: open positions (in→now, peak, giving back %, low)", "HIGH & LOW WATER, THE DAY DRAWN", "Profit booked hour by hour",
-      "THE EDGE grid and THE MEDAL SHELF", "Session clock with London/NY/Tokyo/Sydney timeline", "AI read: risk cards (no stops, gap, loss leak)",
-      "Ask the Desk chat over your own data", "Forex adds: equity, margin, free margin, margin level, leverage, spread"] },
-  { id: "chronicle", path: "/chronicle", label: "Chronicle", short: "CHRONICLE", icon: BookOpen, color: "#e5b94a", status: "inferred", was: "Chronicle",
-    summary: "Trade journal (name only in reference; behaviour from the project doc §17).", features: ["Notes, tags, screenshots per trade", "Export"] },
-  { id: "ema", path: "/desk/ema", label: "EMA Desk", short: "EMA", icon: Layers, color: DESK_COLORS.ema, status: "ready", was: "Index Options Desk",
-    summary: "Session list for EMA strategies (trend pullback, crossover, ribbon).",
-    features: ["Session cards: net, booked/open, peak/low, win bar, today/prev day/per trade", "Status tabs, REFINE dropdowns, SHOWING chips, CLEAR ALL",
-      "Cards / Strip / Table views", "Pause / Resume / Stop / Archive / PDF", "Live panel: chart, markers, position card, CLOSE POSITION",
-      "Find a past trade: cards/table/ledger/calendar", "Trade-detail modal with MFE/MAE", "THE RECORD and TODAY ON SYMBOL"] },
-  { id: "ict", path: "/desk/ict", label: "ICT Desk", short: "ICT", icon: Zap, color: DESK_COLORS.ict, status: "planned", was: "Ultimatum",
-    summary: "Session list for ICT strategies (kill-zone raid, OTE, Silver Bullet, NY open).", features: ["Same desk layout as EMA Desk", "Kill-zone / window chips per session"] },
-  { id: "smc", path: "/desk/smc", label: "SMC Desk", short: "SMC", icon: Layers, color: DESK_COLORS.smc, status: "planned", was: "Zone Options",
-    summary: "Session list for SMC strategies (sweep+CHoCH, BOS+OB, FVG mitigation) with zone chart markers.",
-    features: ["Same desk layout", "Zone markers on chart: LURE / TAP / rule-IN / rule-OUT → sweep / CHoCH / OB / FVG", "Higher-timeframe trend gate chip"] },
-  { id: "candle", path: "/desk/candle", label: "Candle Desk", short: "CANDLE", icon: Layers, color: DESK_COLORS.candle, status: "ready", was: "(new)",
-    summary: "Candlestick pattern strategies with trend filter.", features: [] },
-  { id: "archive", path: "/archive", label: "Session Archive", short: "ARCHIVE", icon: Archive, color: "#aab", status: "inferred", was: "Options Archive",
-    summary: "Stopped / archived sessions (name only in reference).", features: ["Archived session cards", "Restore / PDF"] },
-  { id: "prebuilt", path: "/prebuilt", label: "Prebuilt & Schedules", short: "PREBUILT", icon: Rocket, color: "#8b5cf6", status: "planned", was: "Options Prebuilt",
-    summary: "Saved setups and the schedules that start them.", features: ["Filter chips: family, mode, symbol, scheduled/manual", "THE WEEK AHEAD timeline with day dots and card chips",
-      "Setup cards: settings summary, schedules (time, weekday, OK), ADD SCHEDULE, LAUNCH NOW, DUPLICATE, delete", "Schedules in UTC with session presets"] },
-  { id: "analytics", path: "/analytics", label: "FX Analytics", short: "ANALYTICS", icon: BarChart3, color: "#22c55e", status: "planned", was: "Options Analytics",
-    summary: "Full P&L report: KPIs, calendar heat-map, equity, long vs short, by weekday/hour, outcomes, bands, symbols, day cards.",
-    features: ["Range / family / mode / session filters", "KPI strip (net, win, avg, per day, long, short, best, worst, capture)", "4-month P&L calendar heat-map",
-      "Equity + drawdown + green/red days", "Long vs short two-sides", "By weekday, by entry hour (24h + sessions)", "Outcome histogram", "Effective leverage / margin",
-      "By spread / stop / lot-size bands", "By symbol", "Day-by-day cards", "JUMP TO anchors"] },
-  { id: "edge", path: "/edge", label: "Edge", short: "EDGE", icon: Trophy, color: "#f5b301", status: "planned", was: "Options Edge",
-    summary: "Which settings actually make money; every setup scored in pips.", features: ["LENS Settings/Pairs, WHEN, DESK, BOOK, SYMBOL", "Verdict bar KEEP/PROMISING/WATCH/WEAK/DROP/TOO EARLY",
-      "Setup map bubble scatter", "Rank by 9 metrics + search + only-KEEP", "Setup cards with sparkline, PF, win, dip, form"] },
-  { id: "time-machine", path: "/time-machine", label: "Time Machine", short: "REPLAY", icon: History, color: "#a855f7", status: "planned", was: "Time Machine",
-    summary: "Replay any trading day like a film.", features: ["Date / symbol / book controls, keyboard shortcuts", "1-minute chart with trade markers and layers",
-      "P&L line drawing itself, desk scores as they stood", "Playback 10×/60×/300× with scrubber and hover", "LATEST MOMENTS with reason codes",
-      "THE CHAPTERS: Autopsy / Story / Legs / Signals / Log / Notes with 12 auto insights"] },
-  { id: "weather", path: "/weather", label: "Market Weather", short: "WEATHER", icon: CloudSun, color: "#4f8cff", status: "planned", was: "Market Weather",
-    summary: "What kind of day it was and which desks to switch on for days like it.", features: ["Today's regime + stat tiles + desk advice (Switch on / Caution / Sit out)",
-      "At the open: gap up / flat / gap down", "Report cards / Leaderboard / Bubble matrix", "Biggest edge / leak / most weather-dependent", "THE CLIMATE daily chart"] },
-  { id: "money-left", path: "/money-left", label: "Money Left", short: "MONEY LEFT", icon: HeartCrack, color: "#ef4444", status: "inferred", was: "Money Left",
-    summary: "Profit left on the table: MFE vs realised (name only in reference).", features: ["Given-back analysis per trade and desk"] },
-  { id: "clock", path: "/clock", label: "The Clock", short: "CLOCK", icon: AlarmClock, color: "#f59e0b", status: "planned", was: "The Clock",
-    summary: "When the money is made, on a 24h dial with sessions.", features: ["Polar 24h dial with session arcs", "Best / worst half-hour insights", "Before/after cut-off, held over rollover",
-      "'If you stopped entering at…' curve"] },
-  { id: "rulebook", path: "/rulebook", label: "Rulebook Lab", short: "RULEBOOK", icon: NotebookPen, color: "#22c55e", status: "planned", was: "Rulebook Lab",
-    summary: "What if you had followed a rule? Replay your real trades under it.", features: ["START FROM presets", "Rule toggles: desks, time windows, weekdays, gap/news days, max trades, day stop, tilt guard, cool-down",
-      "Rulebook vs as-traded equity with difference band", "6-KPI result strip"] },
-  { id: "level-lab", path: "/level-lab", label: "Level Lab", short: "LEVELS", icon: Crosshair, color: "#aab", status: "inferred", was: "Strike Lab",
-    summary: "Entry / SL / TP level lab (name only in reference).", features: ["Level optimisation"] },
-  { id: "funnel", path: "/funnel", label: "Signal Funnel", short: "FUNNEL", icon: Funnel, color: "#aab", status: "inferred", was: "Signal Funnel",
-    summary: "Signals → risk-accepted → filled → profitable (name only in reference).", features: ["Stage counts and drop-off reasons"] },
-  { id: "orchestra", path: "/orchestra", label: "Desk Orchestra", short: "ORCHESTRA", icon: Music2, color: "#e5b94a", status: "planned", was: "Desk Orchestra",
-    summary: "How desks combine: smoothness, correlation of losing days.", features: ["Combination scatter (worst fall vs final P&L)", "Equity curves of combinations",
-      "When one loses does the other? matrix", "Per-desk daily P&L heat-map", "Forex adds: pair correlation, USD-stacking warning"] },
-  { id: "chart-desk", path: "/chart-desk", label: "Chart Desk", short: "CHART", icon: Gauge, color: "#3b6cf6", status: "planned", was: "Chart Desk",
-    summary: "Trade from the chart: draw entry, target, stop; orders fire on candle close.", features: ["Session tabs, symbol search, timeframes, Demo/Live",
-      "Draggable TARGET/ENTRY/STOP with pips, money, R:R", "SETUPS panel: lots + risk %, stop exits on touch/close, enter with market/limit/stop, ARM", "LEDGER with TRADES / ACTIVITY"] },
-  { id: "backtest-lab", path: "/backtest-lab", label: "Backtest Lab", short: "BACKTEST", icon: FlaskConical, color: "#8b5cf6", status: "ready",
-    summary: "Run and compare strategy backtests.", features: [] },
-  { id: "investment", path: "/investment", label: "My Investment", short: "INVEST", icon: Wallet, color: "#22c55e", status: "planned",
-    summary: "Capital ledger, TWR/XIRR, allocation (project doc §15).", features: ["Ledger", "TWR / XIRR", "Allocation"] },
-  { id: "reports", path: "/reports", label: "Reports", short: "REPORTS", icon: Hourglass, color: "#aab", status: "planned",
-    summary: "PDF / Excel / CSV downloads and schedules (project doc §16).", features: ["Report catalog", "Scheduled delivery"] },
+  { id: "dashboard", path: "/", label: "Dashboard", icon: LayoutDashboard, color: "currentColor", group: "Overview" },
+  { id: "ema", path: "/desk/ema", label: "EMA Desk", icon: Layers, color: DESK_COLORS.ema, group: "Strategy desks" },
+  { id: "candle", path: "/desk/candle", label: "Candle Desk", icon: CandlestickChart, color: DESK_COLORS.candle, group: "Strategy desks" },
+  { id: "ict", path: "/desk/ict", label: "ICT Desk", icon: Zap, color: DESK_COLORS.ict, group: "Strategy desks" },
+  { id: "smc", path: "/desk/smc", label: "SMC Desk", icon: Crosshair, color: DESK_COLORS.smc, group: "Strategy desks" },
+  { id: "manual", path: "/desk/manual", label: "Manual Trades", icon: Hand, color: "#9aa8b5", group: "Strategy desks" },
+  { id: "backtest-lab", path: "/backtest-lab", label: "Backtest Lab", icon: FlaskConical, color: "#8b5cf6", group: "Research" },
 ];
 
-export const FAVORITES = PAGES.filter((p) => p.id !== "dashboard");
-export const DESK_PILLS = PAGES.filter((p) => ["aurith", "chronicle", "ema", "ict", "smc", "candle"].includes(p.id));
+export const GROUPS = [...new Set(PAGES.map((p) => p.group))];

@@ -6,12 +6,12 @@ from app.domain import Instrument, Market
 from app.markets.base import MarketAdapter
 from app.markets.forex.sessions import forex_market_open
 
-_PAIRS = {
-    "EURUSD": ("EUR_USD", 0.0001),
-    "GBPUSD": ("GBP_USD", 0.0001),
-    "USDJPY": ("USD_JPY", 0.01),
-    "AUDUSD": ("AUD_USD", 0.0001),
-    "XAUUSD": ("XAU_USD", 0.1),
+_PAIRS = {  # symbol -> pip size
+    "EURUSD": 0.0001,
+    "GBPUSD": 0.0001,
+    "USDJPY": 0.01,
+    "AUDUSD": 0.0001,
+    "XAUUSD": 0.1,
 }
 
 
@@ -26,9 +26,9 @@ class ForexAdapter(MarketAdapter):
                 type="metal" if sym.startswith("XAU") else "forex",
                 lot_size=100 if sym.startswith("XAU") else 100_000,
                 pip_size=pip,
-                broker_symbols={"oanda": oanda, "mt5": sym},
+                broker_symbols={"mt5": sym},
             )
-            for sym, (oanda, pip) in _PAIRS.items()
+            for sym, pip in _PAIRS.items()
         ]
 
     def is_open(self, ts: datetime) -> bool:

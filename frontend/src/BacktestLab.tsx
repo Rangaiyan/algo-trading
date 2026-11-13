@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { type BacktestRequest, type BacktestResult, listStrategies, runBacktest } from "./api";
+import { useChartColors } from "./theme";
 
 const SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "XAUUSD"];
 const TFS = ["M5", "M15", "M30", "H1", "H4"];
@@ -8,6 +9,8 @@ const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString(u
 const day = (iso: string) => iso.slice(0, 10);
 
 export default function BacktestLab() {
+  const cc = useChartColors();
+  const tip = { background: cc.tipBg, border: `1px solid ${cc.tipBorder}`, color: cc.tipText };
   const [strategies, setStrategies] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState<BacktestRequest>({
     strategy: "EMA-2", symbol: "EURUSD", timeframe: "M15", source: "synthetic",
@@ -112,22 +115,22 @@ export default function BacktestLab() {
               <h3>Equity {compare && <small className="muted">(dashed = previous run: {compare.strategy})</small>}</h3>
               <ResponsiveContainer width="100%" height={260}>
                 <LineChart data={result.equity.map((p, i) => ({ ...p, prev: compare?.equity[i]?.equity }))}>
-                  <CartesianGrid stroke="#262b38" />
-                  <XAxis dataKey="t" tickFormatter={day} minTickGap={50} stroke="#7a8196" />
-                  <YAxis domain={["auto", "auto"]} stroke="#7a8196" width={60} />
-                  <Tooltip contentStyle={{ background: "#171a23", border: "1px solid #30364a" }} labelFormatter={(l) => String(l).slice(0, 16)} />
-                  <Line dataKey="equity" stroke="#3b6cf6" dot={false} strokeWidth={2} isAnimationActive={false} />
-                  {compare && <Line dataKey="prev" stroke="#7a8196" dot={false} strokeDasharray="4 4" isAnimationActive={false} />}
+                  <CartesianGrid stroke={cc.grid} />
+                  <XAxis dataKey="t" tickFormatter={day} minTickGap={50} stroke={cc.axis} />
+                  <YAxis domain={["auto", "auto"]} stroke={cc.axis} width={60} />
+                  <Tooltip contentStyle={tip} labelFormatter={(l) => String(l).slice(0, 16)} />
+                  <Line dataKey="equity" stroke={cc.line} dot={false} strokeWidth={2} isAnimationActive={false} />
+                  {compare && <Line dataKey="prev" stroke={cc.axis} dot={false} strokeDasharray="4 4" isAnimationActive={false} />}
                 </LineChart>
               </ResponsiveContainer>
               <h3>Drawdown %</h3>
               <ResponsiveContainer width="100%" height={140}>
                 <AreaChart data={result.equity}>
-                  <CartesianGrid stroke="#262b38" />
-                  <XAxis dataKey="t" tickFormatter={day} minTickGap={50} stroke="#7a8196" />
-                  <YAxis stroke="#7a8196" width={60} />
-                  <Tooltip contentStyle={{ background: "#171a23", border: "1px solid #30364a" }} labelFormatter={(l) => String(l).slice(0, 16)} />
-                  <Area dataKey="dd" stroke="#e5534b" fill="#e5534b33" isAnimationActive={false} />
+                  <CartesianGrid stroke={cc.grid} />
+                  <XAxis dataKey="t" tickFormatter={day} minTickGap={50} stroke={cc.axis} />
+                  <YAxis stroke={cc.axis} width={60} />
+                  <Tooltip contentStyle={tip} labelFormatter={(l) => String(l).slice(0, 16)} />
+                  <Area dataKey="dd" stroke={cc.down} fill={cc.down + "33"} isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
