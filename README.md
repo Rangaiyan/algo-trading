@@ -73,5 +73,12 @@ MT5 caps history at "Max bars in chart" (100,000 by default), which limits M1/M5
   (`app/gates/gate2.py`): per paper session, duration, trades, profit factor / win rate vs the backtest, drawdown vs
   the Monte Carlo range, slippage vs the cost model, reconciliation, and the 7 failure drills checklist. Page: Paper
   Trading.
+- **Mobile (PWA) groundwork: ready.** Installable web app (manifest, icons, service worker that never caches API
+  data), API address taken from the page's own host, optional access token (`APP_ACCESS_TOKEN`; the app asks for it
+  once), CORS for this PC, private networks and Tailscale. `backend\start.ps1 -Lan` opens the backend to the network
+  and refuses to start without a token. Installing on a phone needs HTTPS (for example Tailscale `serve`).
+- **First backtest campaign (2026-11-13, H1+H4, 5 pairs):** 31 of 100 baselines had PF > 1; no candidate passed
+  Gate 1. Best lead: ICT-3 EURUSD H1 (validation PF 1.70, walk-forward 143%, max DD 2.2%), failing only on trade
+  count (47) and Sharpe (0.81): next try M15 or several pairs together.
 - **Next:** run Gate 0 in the Strategy Tester; keep researching until a candidate passes Gate 1 and its hold-out;
   then paper trading (Gate 2) on the Deriv demo, with the failure drills.

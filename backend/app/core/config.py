@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # MT5 gateway (Windows service)
     mt5_gateway_url: str = ""
     mt5_gateway_token: str = ""
+    # Dashboard API access token. Required before the backend is reachable from other devices (start.ps1 -Lan).
+    app_access_token: str = ""
+
     # Phase 5: the background trading engine (paper trading on the demo account). Off = no orders are ever sent.
     trading_engine_enabled: bool = True
 

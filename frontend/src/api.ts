@@ -1,4 +1,6 @@
-export const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+// The backend runs on port 8000 of the same machine that serves this page (works on this PC and from a phone).
+import { withToken } from "./auth";
+export const API = import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:8000`;
 
 export type Metrics = {
   trades: number; net_profit: number; return_pct: number; win_rate: number;
@@ -220,7 +222,7 @@ export type ReportSummary = { period: string; from: string | null; to: string; a
   wins: number; losses: number; win_rate: number | null; profit_factor: number | null; best: number | null; worst: number | null;
   by_strategy: { strategy: string; trades: number; pnl: number; wins: number }[]; by_symbol: { symbol: string; trades: number; pnl: number }[]; text: string; disclaimer: string };
 export const reportSummary = (period: string) => fetch(`${API}/reports/summary?period=${period}`).then((r) => jx<ReportSummary>(r));
-export const reportUrl = (kind: "trades.csv" | "performance.html", period: string) => `${API}/reports/${kind}?period=${period}`;
+export const reportUrl = (kind: "trades.csv" | "performance.html", period: string) => withToken(`${API}/reports/${kind}?period=${period}`);
 
 // ---------------- Gate 0: engine vs MT5 Strategy Tester ----------------
 export type Gate0Info = { path: string; exists: boolean; modified?: string; trades?: number | null; tolerances: Record<string, number>; ea_source: string };

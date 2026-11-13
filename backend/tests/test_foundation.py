@@ -141,3 +141,27 @@ def test_desk_summary_splits_trades_by_magic():
     manual = desk_summary("manual", pos, deals)
     assert manual["trades"] == 1 and manual["positions"][0]["id"] == "8"
     assert desk_summary("ict", pos, deals)["trades"] == 0
+
+
+def test_access_token_middleware():
+    from fastapi.testclient import TestClient as TC
+
+    from app.core.config import get_settings
+    from app.main import create_app
+    get_settings.cache_clear()
+    import os
+    os.environ["APP_ACCESS_TOKEN"] = "s3cret-token-for-tests-only"
+    try:
+        get_settings.cache_clear()
+        c = TC(create_app())
+        assert c.get("/health").status_code == 200                                   # open for uptime checks
+        assert c.get("/markets").status_code == 401
+        assert c.get("/markets", headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert c.get("/markets", headers={"Authorization": "Bearer s3cret-token-for-tests-only"}).status_code == 200
+        assert c.get("/markets?access_token=s3cret-token-for-tests-only").status_code == 200
+        r = c.get("/markets", headers={"Origin": "http://192.168.1.20:5173"})
+        assert r.status_code == 401 and r.headers.get("access-control-allow-origin") == "http://192.168.1.20:5173"
+        assert "access-control-allow-origin" not in c.get("/health", headers={"Origin": "http://evil.example.com"}).headers
+    finally:
+        os.environ.pop("APP_ACCESS_TOKEN", None)
+        get_settings.cache_clear()

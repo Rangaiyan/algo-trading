@@ -122,3 +122,6 @@ details.panel summary { cursor: pointer; font-weight: 700; }
 
 .drills { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; } .drills li { border-bottom: 1px solid var(--line); padding-bottom: 8px; font-size: 13px; }
 .drills li.done span { color: var(--muted); text-decoration: line-through; } .drill-note { width: 100%; margin-top: 6px; background: var(--inset); color: var(--text); border: 1px solid var(--line2); border-radius: 4px; padding: 6px; font: inherit; font-size: 12px; }
+
+.auth-title { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.auth-input { width: 100%; margin: 10px 0 14px; background: var(--inset); color: var(--text); border: 1px solid var(--line2); border-radius: 6px; padding: 10px; font: inherit; font-size: 14px; }

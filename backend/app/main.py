@@ -15,6 +15,7 @@ from app.api.gate0 import router as gate0_router
 from app.api.optimize import router as phase3_router
 from app.api.structure import router as structure_router
 from app.api.trading import router as trading_router
+from app.core.access import ORIGIN_REGEX, AccessTokenMiddleware
 from app.core.config import get_settings
 
 logging.basicConfig(level=logging.INFO)
@@ -44,9 +45,11 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Rinz Algo", version="0.1.0", lifespan=lifespan)
+    # CORS must wrap the token check so a 401 still carries CORS headers (added last = outermost).
+    app.add_middleware(AccessTokenMiddleware, token=get_settings().app_access_token)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
+        allow_origin_regex=ORIGIN_REGEX,
         allow_methods=["*"],
         allow_headers=["*"],
     )
