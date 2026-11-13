@@ -159,6 +159,10 @@ def add_session(req: SessionIn) -> dict:
                                      "tick the shakedown box to confirm.")
         strategy, symbol, tf, params, mode, name = req.strategy, req.symbol, req.timeframe, req.params, "shakedown", req.name
     try:
+        if "+" in symbol:  # basket entry: one session per pair, same settings, same library entry
+            made = [eng.add_session(strategy, sym, tf, params, name=f"{name} · {sym}", mode=mode, library_id=req.library_id)
+                    for sym in symbol.split("+")]
+            return made[0] | {"basket_sessions": [m["id"] for m in made]}
         return eng.add_session(strategy, symbol, tf, params, name=name, mode=mode, library_id=req.library_id)
     except (ValueError, StopIteration) as e:
         raise HTTPException(422, f"cannot create session: {e}") from e

@@ -82,7 +82,19 @@ export default function Optimizer() {
             </select>
             {isRule && <small>Rule from the Rule Builder: the optimiser tunes its threshold, exits and structure settings.</small>}
           </label>
-          <label>Pair<select value={req.symbol} onChange={(e) => set("symbol", e.target.value)} disabled={running}>{SYMBOLS.map((s) => <option key={s}>{s}</option>)}</select></label>
+          <div className="small muted">Pair(s) <span title="Two or more pairs = a basket: one rule set with the same settings on every pair, tuned and judged on the combined result">ⓘ</span></div>
+          <div className="multi" style={{ marginBottom: 6 }}>{SYMBOLS.map((sym) => {
+            const sel = req.symbols?.length ? req.symbols : [req.symbol];
+            const on = sel.includes(sym);
+            return <button key={sym} type="button" className={`chip x ${on ? "on" : ""}`} disabled={running} aria-pressed={on}
+              onClick={() => {
+                const next = on ? sel.filter((x) => x !== sym) : [...sel, sym];
+                if (next.length) setReq((r) => ({ ...r, symbol: next[0], symbols: next.length > 1 ? next : undefined }));
+              }}>{sym}</button>;
+          })}</div>
+          <small className="hint">{req.symbols && req.symbols.length > 1
+            ? `Basket of ${req.symbols.length}: settings are shared and tuned on the combined training data; Gate 1 judges the combined trades and checks no single pair carries it.`
+            : "Pick two or more pairs to test the rules as a basket."}</small>
           <label>Timeframe<select value={req.timeframe} onChange={(e) => set("timeframe", e.target.value)} disabled={running}>{TFS.map((s) => <option key={s}>{s}</option>)}</select>
             <small>H1 is quickest. M15 takes several minutes.</small></label>
           <label>Settings to try
@@ -122,7 +134,7 @@ export default function Optimizer() {
 
           {job && (job.status === "running" || job.status === "error") && (
             <div className="panel howto" role="status" aria-live="polite">
-              <h3>{job.status === "error" ? "Failed" : `${job.request.strategy} on ${job.request.symbol} ${job.request.timeframe}: ${job.stage}…`}</h3>
+              <h3>{job.status === "error" ? "Failed" : `${job.request.strategy} on ${job.request.symbols?.length ? job.request.symbols.join("+") : job.request.symbol} ${job.request.timeframe}: ${job.stage}…`}</h3>
               {job.status === "running" && <div className="meter"><i style={{ width: `${Math.min(99, (job.done / Math.max(1, job.total)) * 100)}%` }} /></div>}
               <small className="muted">{job.done} / {job.total} steps</small>
               {job.error && <p className="err">{job.error}</p>}

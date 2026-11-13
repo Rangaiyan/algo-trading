@@ -125,7 +125,7 @@ export type OptReport = {
   holdout: ({ period: string[]; run_at?: string; first_run?: boolean } & Slim) | null;
   gate1: GateRow[]; verdict: "pass" | "fail" | "pending"; multiple_testing_note: string;
 };
-export type OptRequest = { strategy: string; symbol: string; timeframe: string; trials: number; walk_forward: boolean; wf_train_months: number; wf_test_months: number; wf_trials: number; base?: Record<string, unknown> };
+export type OptRequest = { strategy: string; symbol: string; symbols?: string[]; timeframe: string; trials: number; walk_forward: boolean; wf_train_months: number; wf_test_months: number; wf_trials: number; base?: Record<string, unknown> };
 export type OptJob = { id: string; kind?: string; status: "running" | "done" | "error" | "cancelled"; request: OptRequest; stage: string; done: number; total: number; log: string[]; error: string | null; started_at: string; finished_at: string | null; result: OptReport | null };
 export type LibEntry = {
   id: string; name: string; strategy: string; symbol: string; timeframe: string; status: string; created_at: string; updated_at: string;

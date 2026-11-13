@@ -13,7 +13,7 @@ from app.backtest.runner import STRATEGIES
 from app.generate import genetic
 from app.research import campaign
 from app.library import store
-from app.optimize import pipeline
+from app.optimize import basket, pipeline
 from app.optimize.spaces import SPACES
 from app.patterns.candles import BULLISH
 from app.strategies import rules
@@ -27,6 +27,7 @@ _lock = threading.Lock()
 class OptimizeRequest(BaseModel):
     strategy: str
     symbol: str = "EURUSD"
+    symbols: list[str] | None = None             # 2+ pairs = basket: one rule set, shared settings, combined result
     timeframe: str = "H1"
     trials: int = Field(60, ge=0, le=500)       # 0 = validate the given settings as-is
     walk_forward: bool = True
@@ -76,8 +77,15 @@ def start(req: OptimizeRequest) -> dict:
         errs = rules.validate_spec(req.base.get("spec") or {})
         if errs:
             raise HTTPException(422, "; ".join(errs))
+    pairs = list(dict.fromkeys(req.symbols or []))
+    if len(pairs) >= 2:
+        jid = _launch("optimize", req.model_dump(), lambda job: basket.run_basket_pipeline(
+            req.strategy, pairs, req.timeframe, trials=req.trials, walk_forward_on=req.walk_forward,
+            wf_train_months=req.wf_train_months, wf_test_months=req.wf_test_months, wf_trials=req.wf_trials,
+            job=job, base=req.base))
+        return {"job_id": jid}
     jid = _launch("optimize", req.model_dump(), lambda job: pipeline.run_pipeline(
-        req.strategy, req.symbol, req.timeframe, trials=req.trials, walk_forward_on=req.walk_forward,
+        req.strategy, pairs[0] if pairs else req.symbol, req.timeframe, trials=req.trials, walk_forward_on=req.walk_forward,
         wf_train_months=req.wf_train_months, wf_test_months=req.wf_test_months, wf_trials=req.wf_trials,
         job=job, base=req.base))
     return {"job_id": jid}
@@ -236,7 +244,10 @@ def library_holdout(eid: str, confirm_rerun: bool = False) -> dict:
     if e.get("holdout_used") and not confirm_rerun:
         raise HTTPException(409, "The hold-out was already used for this strategy. Re-running makes it no longer an "
                                  "independent test; pass confirm_rerun=true if you really want to.")
-    res = pipeline.run_holdout(e["strategy"], e["symbol"], e["timeframe"], e["params"])
+    if "+" in e["symbol"]:  # basket entry: the hold-out runs on every pair together
+        res = basket.run_basket_holdout(e["strategy"], e["symbol"].split("+"), e["timeframe"], e["params"])
+    else:
+        res = pipeline.run_holdout(e["strategy"], e["symbol"], e["timeframe"], e["params"])
     rep = dict(e["report"], holdout=res)
     rows = pipeline.gate1(rep)
     return store.record_holdout(eid, res, rows, pipeline.gate_verdict(rows))
