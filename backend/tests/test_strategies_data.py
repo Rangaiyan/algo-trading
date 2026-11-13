@@ -8,7 +8,7 @@ from app.domain import Bar, Instrument, Market
 from app.strategies.candle.strategies import CandlestickBaseline
 from app.patterns.candles import BULLISH
 from app.strategies.ema.strategies import EMACrossover, EMARibbon, EMATrendPullback
-from app.strategies.ict.strategies import ICTAsiaRaid, ICTOte, ICTSilverBullet
+from app.strategies.ict.strategies import ICTAsiaRaid, ICTNYOpen, ICTOte, ICTSilverBullet
 from app.strategies.smc.strategies import SMCBosRetest, SMCFvgMitigation, SMCSweepChoch
 
 EURUSD = Instrument(Market.FOREX, "EURUSD")
@@ -20,7 +20,7 @@ class AllPatterns(CandlestickBaseline):
 
 
 STRATS = [EMATrendPullback, EMACrossover, EMARibbon, CandlestickBaseline, AllPatterns]
-STRUCTURE_STRATS = [SMCSweepChoch, SMCBosRetest, SMCFvgMitigation, ICTAsiaRaid, ICTOte, ICTSilverBullet]
+STRUCTURE_STRATS = [SMCSweepChoch, SMCBosRetest, SMCFvgMitigation, ICTAsiaRaid, ICTOte, ICTSilverBullet, ICTNYOpen]
 
 
 def collect(strategy, df):

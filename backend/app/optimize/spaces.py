@@ -31,6 +31,8 @@ SPACES: dict[str, Space] = {
               "require_fvg": ("cat", [False, True]), "kinds": ("cat", [("CHoCH",), ("CHoCH", "BOS")])},
     "ICT-3": {"fvg_min_atr": ("float", 0.2, 0.8, 0.1), "sl_buffer_atr": ("float", 0.1, 0.5, 0.1), **_EXITS,
               "require_sweep": ("cat", [True, False]), "sweep_lookback": ("int", 10, 80, 10)},
+    "ICT-4": {**_STRUCT, "min_rr": ("float", 1.5, 3.0, 0.25), "need_displacement": ("cat", [True, False]),
+              "kinds": ("cat", [("BOS", "CHoCH"), ("CHoCH",), ("BOS",)]), "zone": ("cat", ["fvg", "ob"])},
     # rule-builder strategies: tune the confluence threshold, exits and structure settings on top of the spec
     "RULE": {"threshold": ("int", 3, 10, 1), "buffer_atr": ("float", 0.1, 0.5, 0.1), "min_rr": ("float", 1.5, 3.0, 0.25),
              "rr": ("float", 1.5, 3.5, 0.25), "swing_n": ("int", 2, 5, 1), "displacement_k": ("float", 1.0, 2.5, 0.25)},

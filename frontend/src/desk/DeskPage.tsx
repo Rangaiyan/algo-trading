@@ -9,7 +9,7 @@ import "./desk.css";
 const DESK_INFO: Record<string, { title: string; eyebrow: string; blurb: string }> = {
   ema: { title: "EMA Desk", eyebrow: "Trend following", blurb: "EMA trend rules. EMA-1 buys pullbacks to the 20/50 EMA inside an EMA-200 trend; EMA-2 trades a fast/slow crossover filtered by ADX." },
   candle: { title: "Candle Desk", eyebrow: "Candlestick patterns", blurb: "Engulfing and pin-bar patterns in the direction of the EMA-200 trend, stop beyond the pattern, fixed reward-to-risk." },
-  ict: { title: "ICT Desk", eyebrow: "Time and price", blurb: "Kill-zone liquidity raids, optimal trade entry, Silver Bullet windows. ICT-1 Asia raid, ICT-2 OTE, ICT-3 Silver Bullet: built and backtestable; they appear here once they trade on MT5 (Phase 5)." },
+  ict: { title: "ICT Desk", eyebrow: "Time and price", blurb: "Kill-zone liquidity raids, optimal trade entry, Silver Bullet windows. ICT-1 Asia raid, ICT-2 OTE, ICT-3 Silver Bullet, ICT-4 NY open daily bias: built and backtestable; they appear here once they trade on MT5 (Phase 5)." },
   smc: { title: "SMC Desk", eyebrow: "Market structure", blurb: "Liquidity sweep + CHoCH + order block / FVG entries, BOS continuation and FVG mitigation. SMC-1, SMC-2, SMC-3: built and backtestable; they appear here once they trade on MT5 (Phase 5)." },
   manual: { title: "Manual Trades", eyebrow: "Placed by you", blurb: "Trades you placed yourself in the MT5 terminal (magic number 0)." },
 };

@@ -11,14 +11,14 @@ from app.domain import Market
 from app.markets.registry import get_market
 from app.strategies.candle.strategies import CandlestickBaseline
 from app.strategies.ema.strategies import EMACrossover, EMARibbon, EMATrendPullback
-from app.strategies.ict.strategies import ICTAsiaRaid, ICTOte, ICTSilverBullet
+from app.strategies.ict.strategies import ICTAsiaRaid, ICTNYOpen, ICTOte, ICTSilverBullet
 from app.strategies.rules import RuleStrategy
 from app.strategies.smc.strategies import SMCBosRetest, SMCFvgMitigation, SMCSweepChoch
 
 STRATEGIES = {
     "EMA-1": EMATrendPullback, "EMA-2": EMACrossover, "EMA-3": EMARibbon, "CANDLE-1": CandlestickBaseline,
     "SMC-1": SMCSweepChoch, "SMC-2": SMCBosRetest, "SMC-3": SMCFvgMitigation,
-    "ICT-1": ICTAsiaRaid, "ICT-2": ICTOte, "ICT-3": ICTSilverBullet,
+    "ICT-1": ICTAsiaRaid, "ICT-2": ICTOte, "ICT-3": ICTSilverBullet, "ICT-4": ICTNYOpen,
     "RULE": RuleStrategy,
 }
 DATA_ROOT = "data_store"

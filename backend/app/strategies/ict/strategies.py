@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import time
 
 import numpy as np
+import pandas as pd
 
 from app.domain import Bar, Signal
 from app.strategies.structure_base import StructureStrategy
@@ -125,4 +126,51 @@ class ICTSilverBullet(StructureStrategy):
             sl = (first_low if d > 0 else first_high) - d * self.p("sl_buffer_atr") * self.atr[i]
             self.used.add((self.day[i], w))
             return self.order(d, entry, sl, entry + d * self.p("rr") * abs(entry - sl), f"Silver Bullet window {w + 1}")
+        return []
+
+
+class ICTNYOpen(StructureStrategy):
+    """ICT-4 (doc 8.3): daily bias from the previous day's high/low behaviour, first aligned setup after the NY open."""
+
+    name = "ICT-4"
+    defaults = {"window": ("07:00", "11:00"), "need_displacement": True, "kinds": ("BOS", "CHoCH"), "zone": "fvg"}
+
+    def on_start(self, ctx):
+        super().on_start(ctx)
+        idx = ctx.df.index
+        self.in_window = in_ny_window(idx, *map(_t, self.p("window")))
+        self.day = trading_day(idx)
+        # completed trading days: high / low / close, then the bias each day starts with (uses finished days only)
+        d = pd.DataFrame({"day": self.day, "h": self.h, "l": self.l, "c": self.c})
+        daily = d.groupby("day").agg(h=("h", "max"), l=("l", "min"), c=("c", "last"))
+        prev, prev2 = daily.shift(1), daily.shift(2)
+        bias = pd.Series(0, index=daily.index)
+        bias[(prev.l < prev2.l) & (prev.c > prev2.l)] = 1          # swept the day-before low, closed back above
+        bias[(prev.h > prev2.h) & (prev.c < prev2.h)] = -1         # swept the day-before high, closed back below
+        cont_up = (bias == 0) & (prev.c > prev2.h)
+        cont_dn = (bias == 0) & (prev.c < prev2.l)
+        bias[cont_up], bias[cont_dn] = 1, -1
+        self.day_bias = pd.Series(self.day).map(bias).fillna(0).astype(int).to_numpy()
+        self.traded: set = set()
+
+    def on_bar(self, ctx, bar: Bar) -> list[Signal]:
+        i = self.bind(ctx)
+        self.observe(i)
+        day = self.day[i]
+        if not self.in_window[i] or day in self.traded or np.isnan(self.atr[i]):
+            return []
+        bias = self.day_bias[i] or int(self.a.htf[i])   # no clear daily read -> H4 structure
+        if bias == 0:
+            return []
+        for bi, b in self.breaks_now(i):
+            if b.direction != bias or b.kind not in self.p("kinds") or (self.p("need_displacement") and not b.displacement):
+                continue
+            z = self.entry_zone(bi, b, i, self.p("zone"))
+            if z is None:
+                continue
+            d = bias
+            entry = z.top if d > 0 else z.bottom
+            sl = b.leg_price - d * self.p("sl_buffer_atr") * self.atr[i]
+            self.traded.add(day)
+            return self.order(d, entry, sl, self.target(d, entry, abs(entry - sl), i), f"NY open, daily bias {'up' if d > 0 else 'down'}")
         return []

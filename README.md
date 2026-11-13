@@ -80,5 +80,9 @@ MT5 caps history at "Max bars in chart" (100,000 by default), which limits M1/M5
 - **First backtest campaign (2026-11-13, H1+H4, 5 pairs):** 31 of 100 baselines had PF > 1; no candidate passed
   Gate 1. Best lead: ICT-3 EURUSD H1 (validation PF 1.70, walk-forward 143%, max DD 2.2%), failing only on trade
   count (47) and Sharpe (0.81): next try M15 or several pairs together.
+- **Research tools:** basket validation (`app/optimize/basket.py`: one rule set, shared settings, several pairs,
+  judged on the combined trades plus a "not carried by one pair" check); `backend/run_campaign.py` and
+  `backend/run_basket.py` run research in their own process. ICT-4 (NY open, daily bias from the previous day's
+  high/low behaviour) completes the plan's strategy list.
 - **Next:** run Gate 0 in the Strategy Tester; keep researching until a candidate passes Gate 1 and its hold-out;
   then paper trading (Gate 2) on the Deriv demo, with the failure drills.

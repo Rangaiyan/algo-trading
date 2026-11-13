@@ -14,6 +14,7 @@ STRATEGY_MAGIC: dict[str, int] = {
     "ICT-1": 3001,
     "ICT-2": 3002,
     "ICT-3": 3003,
+    "ICT-4": 3004,
     "SMC-1": 4001,
     "SMC-2": 4002,
     "SMC-3": 4003,
